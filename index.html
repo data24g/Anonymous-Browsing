@@ -1,0 +1,83 @@
+<!-- electron-anti-detect-browser/index.html -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="script-src 'self' 'unsafe-inline';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini Anti-Detect Browser</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Mini Anti-Detect Browser</h1>
+
+      <div id="profile-manager">
+        <h2>Browser Profiles</h2>
+        <button id="addProfileButton">Add New Profile</button>
+        <ul id="profile-list">
+          <!-- Profiles will be loaded here by JavaScript -->
+        </ul>
+      </div>
+
+      <div id="profile-form-modal" class="modal">
+        <div class="modal-content">
+          <span class="close-button">&times;</span>
+          <h3><span id="formTitle">Create New Profile</span></h3>
+          <form id="profileForm">
+            <input type="hidden" id="profileId" />
+
+            <label for="profileName">Profile Name:</label>
+            <input type="text" id="profileName" required />
+
+            <label for="browserType">Browser Type:</label>
+            <select id="browserType">
+              <option value="chrome">Google Chrome</option>
+              <option value="Opera">Opera</option>
+              <option value="firefox">Mozilla Firefox</option>
+              <option value="edge">Microsoft Edge</option>
+            </select>
+
+            <label for="userAgent">User Agent:</label>
+            <input type="text" id="userAgent" required />
+
+            <label for="proxy">Proxy (IP:PORT:USER:PASS or IP:PORT):</label>
+            <input type="text" id="proxy" />
+
+            <label for="width">Width:</label>
+            <input type="number" id="width" value="1920" />
+
+            <label for="height">Height:</label>
+            <input type="number" id="height" value="1080" />
+
+            <label for="timezone">Timezone (e.g., Asia/Ho_Chi_Minh):</label>
+            <input type="text" id="timezone" value="Asia/Ho_Chi_Minh" />
+
+            <label for="platform"
+              >Platform (e.g., Win32, MacIntel, Linux):</label
+            >
+            <input type="text" id="platform" value="Win32" />
+
+            <label for="startUrl">Start URL:</label>
+            <input
+              type="url"
+              id="startUrl"
+              value="https://bot.sannysoft.com/"
+            />
+
+            <button type="submit" id="saveProfileButton">Save Profile</button>
+            <button type="button" id="cancelProfileButton">Cancel</button>
+          </form>
+        </div>
+      </div>
+
+      <p id="status-message"></p>
+    </div>
+
+    <script src="./renderer.js"></script>
+    z
+  </body>
+</html>

@@ -1,0 +1,203 @@
+/* electron-anti-detect-browser/src/css/styles.css */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+  background-color: #f4f4f4;
+  color: #333;
+}
+
+.container {
+  margin: 0 auto;
+  background-color: #fff;
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+h1,
+h2,
+h3 {
+  color: #0056b3;
+}
+
+#profile-manager {
+  margin-top: 20px;
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+}
+
+#addProfileButton {
+  background-color: #28a745;
+  color: white;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  margin-bottom: 15px;
+}
+
+#addProfileButton:hover {
+  background-color: #218838;
+}
+
+#profile-list {
+  list-style: none;
+  padding: 0;
+}
+
+.profile-item {
+  background-color: #e9ecef;
+  padding: 10px 15px;
+  margin-bottom: 8px;
+  border-radius: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.profile-item:nth-child(even) {
+  background-color: #f8f9fa;
+}
+
+.profile-name {
+  font-weight: bold;
+  flex-grow: 1;
+}
+
+.profile-actions button {
+  margin-left: 10px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.open-profile-btn {
+  background-color: #007bff;
+  color: white;
+}
+.open-profile-btn:hover {
+  background-color: #0056b3;
+}
+
+.edit-profile-btn {
+  background-color: #ffc107;
+  color: #333;
+}
+.edit-profile-btn:hover {
+  background-color: #e0a800;
+}
+
+.delete-profile-btn {
+  background-color: #dc3545;
+  color: white;
+}
+.delete-profile-btn:hover {
+  background-color: #c82333;
+}
+
+.no-profiles {
+  font-style: italic;
+  color: #666;
+}
+
+/* --- Modal Styles --- */
+.modal {
+  display: none; /* Hidden by default */
+  position: fixed; /* Stay in place */
+  z-index: 1; /* Sit on top */
+  left: 0;
+  top: 0;
+  width: 100%; /* Full width */
+  height: 100%; /* Full height */
+  overflow: auto; /* Enable scroll if needed */
+  background-color: rgba(0, 0, 0, 0.4); /* Black w/ opacity */
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-content {
+  background-color: #fefefe;
+  margin: 10% auto; /* 10% from the top and centered */
+  padding: 25px;
+  border: 1px solid #888;
+  width: 80%; /* Could be more or less, depending on screen size */
+  max-width: 600px;
+  border-radius: 8px;
+  position: relative;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.close-button {
+  color: #aaa;
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+  position: absolute;
+  top: 10px;
+  right: 15px;
+}
+
+.close-button:hover,
+.close-button:focus {
+  color: black;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+#profileForm label {
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+#profileForm input[type="text"],
+#profileForm input[type="number"],
+#profileForm input[type="url"],
+#profileForm select {
+  width: calc(100% - 20px);
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+#profileForm button {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  margin-right: 10px;
+}
+
+#saveProfileButton {
+  background-color: #007bff;
+  color: white;
+}
+#saveProfileButton:hover {
+  background-color: #0056b3;
+}
+
+#cancelProfileButton {
+  background-color: #6c757d;
+  color: white;
+}
+#cancelProfileButton:hover {
+  background-color: #5a6268;
+}
+
+#status-message {
+  margin-top: 20px;
+  padding: 10px;
+  border-radius: 5px;
+  background-color: #e9f7ef;
+  border: 1px solid #d4edda;
+  color: #155724;
+  font-weight: bold;
+}
