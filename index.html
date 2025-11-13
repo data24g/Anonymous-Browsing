@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Secure Browser App</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <h1>Quản lý Profile & Proxy Trình Duyệt</h1>
+
+    <div class="main-container">
+      <div class="column">
+        <!-- Phần quản lý Profile -->
+        <div class="management-section">
+          <h2>Tạo Profile Mới</h2>
+          <div class="form-group">
+            <input type="text" id="newProfileName" placeholder="Tên Profile" />
+            <select id="newProfileProxySelect">
+              <option value="">Không dùng Proxy</option>
+            </select>
+            <button id="createProfileBtn">Tạo</button>
+          </div>
+          <p id="createProfileMessage" class="message"></p>
+        </div>
+
+        <div class="list-container">
+          <h2>Danh sách Profiles</h2>
+
+          <!-- === THÊM Ô INPUT URL Ở ĐÂY === -->
+          <div class="url-opener">
+            <input
+              type="text"
+              id="urlToOpen"
+              placeholder="Nhập URL để mở (vd: https://google.com)"
+              value="https://whoer.net/"
+            />
+          </div>
+          <!-- ============================ -->
+
+          <ul id="profileList"></ul>
+        </div>
+      </div>
+
+      <div class="column">
+        <!-- Phần quản lý Proxy -->
+        <div class="management-section">
+          <h2>Quản lý Proxy</h2>
+          <div class="proxy-form">
+            <input
+              type="text"
+              id="proxyName"
+              placeholder="Tên Proxy (duy nhất)"
+            />
+            <input
+              type="text"
+              id="proxyServer"
+              placeholder="Server (vd: http://ip:port)"
+            />
+            <input
+              type="text"
+              id="proxyUsername"
+              placeholder="Username (tùy chọn)"
+            />
+            <input
+              type="password"
+              id="proxyPassword"
+              placeholder="Password (tùy chọn)"
+            />
+            <button id="addUpdateProxyBtn">Thêm Proxy</button>
+          </div>
+          <p id="proxyMessage" class="message"></p>
+        </div>
+
+        <div class="list-container">
+          <h3>Proxies Đã Lưu</h3>
+          <ul id="proxyList"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Cấu hình Profile -->
+    <div id="profileConfigModal" class="modal">
+      <div class="modal-content">
+        <span class="close-button">&times;</span>
+        <h2>Cấu hình Profile: <span id="currentProfileName"></span></h2>
+
+        <div class="config-section">
+          <h3>Gán Proxy</h3>
+          <p>Chọn một proxy đã lưu để sử dụng cho profile này.</p>
+          <select id="configProxyName" class="config-input">
+            <option value="">Không dùng Proxy</option>
+          </select>
+          <p class="note">
+            Lưu ý: Múi giờ và vị trí của proxy sẽ được ưu tiên sử dụng khi mở
+            trình duyệt.
+          </p>
+        </div>
+
+        <button id="saveProfileConfigBtn">Lưu Cấu hình</button>
+        <p id="configMessage" class="message"></p>
+      </div>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
