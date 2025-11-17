@@ -21,4 +21,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   updateProxy: (oldName, newConfig) =>
     ipcRenderer.invoke("update-proxy", oldName, newConfig),
   deleteProxy: (proxyName) => ipcRenderer.invoke("delete-proxy", proxyName),
+
+  
 });

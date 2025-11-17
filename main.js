@@ -389,6 +389,291 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
       console.log("No existing contexts to close");
     }
 
+    // ======================================================
+    // QUAN TRỌNG: ÁP DỤNG FINGERPRINT TRƯỚC KHI BROWSER KHỞI ĐỘNG
+    // ======================================================
+    const fingerprintScript = `
+    // === FINGERPRINT PROTECTION - APPLIED IMMEDIATELY ===
+    (function() {
+      const sessionFingerprints = ${JSON.stringify(sessionFingerprints)};
+      
+      console.log("🛡️ Applying COMPLETE fingerprint protection IMMEDIATELY...");
+      
+      // === WEBGL HASH PROTECTION - CAN THIỆP SÂU ===
+      if (typeof WebGLRenderingContext !== "undefined") {
+        const WebGL = WebGLRenderingContext;
+        
+        // 1. GHI ĐÈ GETPARAMETER - TRẢ VỀ GIÁ TRỊ FAKE
+        const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function (parameter) {
+          // Tạo mapping HOÀN TOÀN NGẪU NHIÊN cho mỗi session
+          const randomBase = sessionFingerprints.webglSeed;
+          
+          const parameterMap = {
+            // Core WebGL parameters
+            [WebGL.VENDOR]: sessionFingerprints.webglVendor,
+            [WebGL.RENDERER]: sessionFingerprints.webglRenderer,
+            [WebGL.VERSION]: sessionFingerprints.webglVersion,
+            
+            // Unmasked parameters - QUAN TRỌNG
+            37445: sessionFingerprints.webglVendor,
+            37446: sessionFingerprints.webglRenderer,
+            
+            // Hardware limits - NGẪU NHIÊN HOÀN TOÀN
+            [WebGL.MAX_TEXTURE_SIZE]: 4096 + (randomBase % 8192),
+            [WebGL.MAX_RENDERBUFFER_SIZE]: 4096 + (randomBase % 8192),
+            [WebGL.MAX_VIEWPORT_DIMS]: [8192 + (randomBase % 8192), 8192 + (randomBase % 8192)],
+            [WebGL.MAX_CUBE_MAP_TEXTURE_SIZE]: 4096 + (randomBase % 4096),
+            [WebGL.MAX_VERTEX_TEXTURE_IMAGE_UNITS]: 8 + (randomBase % 24),
+            [WebGL.MAX_TEXTURE_IMAGE_UNITS]: 8 + (randomBase % 24),
+            [WebGL.MAX_VERTEX_ATTRIBS]: 8 + (randomBase % 8),
+            [WebGL.MAX_VERTEX_UNIFORM_VECTORS]: 128 + (randomBase % 896),
+            [WebGL.MAX_FRAGMENT_UNIFORM_VECTORS]: 64 + (randomBase % 960),
+            
+            // Các parameters khác
+            [WebGL.ALIASED_LINE_WIDTH_RANGE]: new Float32Array([1, 10 + (randomBase % 5)]),
+            [WebGL.ALIASED_POINT_SIZE_RANGE]: new Float32Array([1, 2048 + (randomBase % 100)]),
+            [WebGL.MAX_COMBINED_TEXTURE_IMAGE_UNITS]: 8 + (randomBase % 24),
+          };
+
+          if (parameterMap[parameter] !== undefined) {
+            return parameterMap[parameter];
+          }
+
+          try {
+            const result = originalGetParameter.call(this, parameter);
+            
+            // THÊM BIẾN THỂ NGẪU NHIÊN CHO TẤT CẢ KẾT QUẢ
+            if (typeof result === 'number') {
+              const variant = (randomBase + parameter) % 1000;
+              return result + (variant * 0.000001);
+            }
+            
+            return result;
+          } catch (e) {
+            return null;
+          }
+        };
+
+        // 2. GHI ĐÈ READPIXELS - THÊM NOISE VÀO PIXEL DATA
+        const originalReadPixels = WebGLRenderingContext.prototype.readPixels;
+        WebGLRenderingContext.prototype.readPixels = function (x, y, width, height, format, type, pixels) {
+          const result = originalReadPixels.call(this, x, y, width, height, format, type, pixels);
+          
+          if (pixels && pixels.length > 0) {
+            const targetHash = sessionFingerprints.webglHash;
+            let hashSum = 0;
+            for (let i = 0; i < targetHash.length; i++) {
+              hashSum += targetHash.charCodeAt(i);
+            }
+            
+            // Áp dụng noise pattern PHỨC TẠP
+            for (let i = 0; i < pixels.length; i += 4) {
+              const pixelIndex = i / 4;
+              const xPos = pixelIndex % width;
+              const yPos = Math.floor(pixelIndex / width);
+              
+              // Tạo noise độc nhất cho mỗi pixel
+              const positionFactor = (xPos * 7 + yPos * 13) % 17;
+              const hashFactor = (hashSum + i) % 11;
+              const timeFactor = (sessionFingerprints.timestamp + i) % 7;
+              
+              const finalNoise = (positionFactor + hashFactor + timeFactor) % 5;
+              
+              pixels[i] = (pixels[i] + finalNoise) % 256;         // Red
+              pixels[i + 1] = (pixels[i + 1] + finalNoise) % 256; // Green
+              pixels[i + 2] = (pixels[i + 2] + finalNoise) % 256; // Blue
+            }
+          }
+          
+          return result;
+        };
+
+        // 3. GHI ĐÈ GETSHADERPRECISIONFORMAT
+        const originalGetShaderPrecisionFormat = WebGLRenderingContext.prototype.getShaderPrecisionFormat;
+        WebGLRenderingContext.prototype.getShaderPrecisionFormat = function (shaderType, precisionType) {
+          const format = originalGetShaderPrecisionFormat.call(this, shaderType, precisionType);
+          if (format) {
+            // Thay đổi precision để tạo hash khác
+            const randomVariant = sessionFingerprints.webglSeed % 5;
+            return {
+              rangeMin: format.rangeMin,
+              rangeMax: format.rangeMax + randomVariant,
+              precision: format.precision + (randomVariant % 2)
+            };
+          }
+          return format;
+        };
+
+        // 4. GHI ĐÈ GETSUPPORTEDEXTENSIONS
+        const originalGetSupportedExtensions = WebGLRenderingContext.prototype.getSupportedExtensions;
+        WebGLRenderingContext.prototype.getSupportedExtensions = function () {
+          const original = originalGetSupportedExtensions.call(this) || [];
+          
+          // Tạo extensions list độc nhất
+          const modifiedExtensions = [...original];
+          
+          // Loại bỏ extensions debug
+          const debugExtensions = ['WEBGL_debug_renderer_info', 'WEBGL_debug_shaders', 'WEBGL_lose_context'];
+          debugExtensions.forEach(ext => {
+            const index = modifiedExtensions.indexOf(ext);
+            if (index > -1) {
+              modifiedExtensions.splice(index, 1);
+            }
+          });
+          
+          // Thêm extensions ngẫu nhiên
+          const possibleExtensions = [
+            'WEBGL_compressed_texture_etc',
+            'WEBGL_compressed_texture_astc', 
+            'WEBGL_compressed_texture_s3tc',
+            'WEBGL_depth_texture',
+            'WEBGL_draw_buffers',
+            'OES_texture_float',
+            'OES_texture_half_float',
+            'OES_standard_derivatives',
+            'EXT_texture_filter_anisotropic'
+          ];
+          
+          possibleExtensions.forEach(ext => {
+            const shouldAdd = (sessionFingerprints.webglSeed + ext.length) % 3 === 0;
+            if (shouldAdd && !modifiedExtensions.includes(ext)) {
+              modifiedExtensions.push(ext);
+            }
+          });
+          
+          return modifiedExtensions.sort(); // Sắp xếp để tạo hash khác
+        };
+
+        console.log("✅ WebGL HASH protection applied IMMEDIATELY");
+      }
+
+      // === AUDIOCONTEXT HASH PROTECTION ===
+      if (window.OfflineAudioContext) {
+        const OriginalOfflineAudioContext = window.OfflineAudioContext;
+        
+        window.OfflineAudioContext = function(numberOfChannels, length, sampleRate) {
+          console.log("🎵 Creating protected OfflineAudioContext");
+          
+          // Thay đổi các tham số để tạo hash khác
+          const modifiedSampleRate = sampleRate + (sessionFingerprints.audioSeed % 100);
+          const modifiedLength = length + (sessionFingerprints.audioSeed % 512);
+          
+          const context = new OriginalOfflineAudioContext(
+            numberOfChannels, 
+            modifiedLength, 
+            modifiedSampleRate
+          );
+          
+          // Ghi đè createAnalyser
+          const originalCreateAnalyser = context.createAnalyser;
+          context.createAnalyser = function() {
+            const analyser = originalCreateAnalyser.call(this);
+            
+            // Fake frequencyBinCount
+            const fakeFreqBin = 1024 + (sessionFingerprints.audioSeed % 256);
+            Object.defineProperty(analyser, 'frequencyBinCount', {
+              get: function() {
+                return fakeFreqBin;
+              },
+              configurable: false
+            });
+            
+            // Ghi đè getByteFrequencyData
+            const originalGetByteFrequencyData = analyser.getByteFrequencyData;
+            analyser.getByteFrequencyData = function(array) {
+              const result = originalGetByteFrequencyData.call(this, array);
+              
+              if (array && array.length > 0) {
+                const audioHash = sessionFingerprints.audioHash;
+                let hashSum = 0;
+                for (let i = 0; i < audioHash.length; i++) {
+                  hashSum += audioHash.charCodeAt(i);
+                }
+                
+                for (let i = 0; i < array.length; i++) {
+                  const positionFactor = (i * hashSum) % 127;
+                  const timeFactor = (sessionFingerprints.timestamp + i) % 63;
+                  const noise = (positionFactor + timeFactor) % 32;
+                  array[i] = (array[i] + noise) % 256;
+                }
+              }
+              return result;
+            };
+            
+            return analyser;
+          };
+          
+          return context;
+        };
+        
+        window.OfflineAudioContext.prototype = OriginalOfflineAudioContext.prototype;
+      }
+
+      // AudioContext protection
+      if (window.AudioContext || window.webkitAudioContext) {
+        const OriginalAudioContext = window.AudioContext || window.webkitAudioContext;
+        
+        window.AudioContext = function(contextOptions) {
+          const audioContext = new OriginalAudioContext(contextOptions);
+          
+          // Fake currentTime
+          const timeOffset = (sessionFingerprints.audioSeed % 10000) / 100000;
+          Object.defineProperty(audioContext, 'currentTime', {
+            get: function() {
+              const realTime = Object.getOwnPropertyDescriptor(
+                OriginalAudioContext.prototype, 
+                'currentTime'
+              ).get.call(this);
+              return realTime + timeOffset;
+            },
+            configurable: false
+          });
+
+          // Fake sampleRate
+          const originalSampleRate = audioContext.sampleRate;
+          Object.defineProperty(audioContext, 'sampleRate', {
+            get: function() {
+              return originalSampleRate + (sessionFingerprints.audioSeed % 50);
+            },
+            configurable: false
+          });
+
+          return audioContext;
+        };
+        
+        window.AudioContext.prototype = OriginalAudioContext.prototype;
+        if (window.webkitAudioContext) {
+          window.webkitAudioContext = window.AudioContext;
+        }
+
+        console.log("✅ AudioContext HASH protection applied IMMEDIATELY");
+      }
+
+      // === CANVAS PROTECTION ===
+      if (window.CanvasRenderingContext2D) {
+        const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+        CanvasRenderingContext2D.prototype.getImageData = function (...args) {
+          const imageData = originalGetImageData.apply(this, args);
+          
+          const data = imageData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            if (i % 20 === 0) {
+              const noise = (i + sessionFingerprints.timestamp) % 4;
+              data[i] = (data[i] + noise) % 256;
+              data[i + 1] = (data[i + 1] + noise) % 256;
+              data[i + 2] = (data[i + 2] + noise) % 256;
+            }
+          }
+          return imageData;
+        };
+        console.log("✅ Canvas protection applied IMMEDIATELY");
+      }
+
+      console.log("✅ ALL fingerprint protections applied IMMEDIATELY and PERMANENTLY");
+    })();
+    `;
+
     browserContext = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
       proxy: playwrightProxyConfig,
@@ -439,322 +724,34 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
     });
 
     // ======================================================
-    // HÀM BẢO VỆ COMPLETE FINGERPRINT (WEBGL + AUDIO)
+    // ÁP DỤNG FINGERPRINT CHO TẤT CẢ CÁC PAGE
     // ======================================================
-    const applyCompleteFingerprintProtection = async (
-      targetPage,
-      sessionFingerprints
-    ) => {
-      try {
-        await targetPage.addInitScript((args) => {
-          const { sessionFingerprints } = args;
-
-          console.log("🛡️ Applying COMPLETE fingerprint protection...");
-
-          // === WEBGL HASH PROTECTION - CAN THIỆP SÂU ===
-          if (typeof WebGLRenderingContext !== "undefined") {
-            const WebGL = WebGLRenderingContext;
-            
-            // 1. GHI ĐÈ GETPARAMETER - TRẢ VỀ GIÁ TRỊ FAKE
-            const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function (parameter) {
-              // Tạo mapping HOÀN TOÀN NGẪU NHIÊN cho mỗi session
-              const randomBase = sessionFingerprints.webglSeed;
-              
-              const parameterMap = {
-                // Core WebGL parameters
-                [WebGL.VENDOR]: sessionFingerprints.webglVendor,
-                [WebGL.RENDERER]: sessionFingerprints.webglRenderer,
-                [WebGL.VERSION]: sessionFingerprints.webglVersion,
-                
-                // Unmasked parameters - QUAN TRỌNG
-                37445: sessionFingerprints.webglVendor,
-                37446: sessionFingerprints.webglRenderer,
-                
-                // Hardware limits - NGẪU NHIÊN HOÀN TOÀN
-                [WebGL.MAX_TEXTURE_SIZE]: 4096 + (randomBase % 8192),
-                [WebGL.MAX_RENDERBUFFER_SIZE]: 4096 + (randomBase % 8192),
-                [WebGL.MAX_VIEWPORT_DIMS]: [8192 + (randomBase % 8192), 8192 + (randomBase % 8192)],
-                [WebGL.MAX_CUBE_MAP_TEXTURE_SIZE]: 4096 + (randomBase % 4096),
-                [WebGL.MAX_VERTEX_TEXTURE_IMAGE_UNITS]: 8 + (randomBase % 24),
-                [WebGL.MAX_TEXTURE_IMAGE_UNITS]: 8 + (randomBase % 24),
-                [WebGL.MAX_VERTEX_ATTRIBS]: 8 + (randomBase % 8),
-                [WebGL.MAX_VERTEX_UNIFORM_VECTORS]: 128 + (randomBase % 896),
-                [WebGL.MAX_FRAGMENT_UNIFORM_VECTORS]: 64 + (randomBase % 960),
-                
-                // Các parameters khác
-                [WebGL.ALIASED_LINE_WIDTH_RANGE]: new Float32Array([1, 10 + (randomBase % 5)]),
-                [WebGL.ALIASED_POINT_SIZE_RANGE]: new Float32Array([1, 2048 + (randomBase % 100)]),
-                [WebGL.MAX_COMBINED_TEXTURE_IMAGE_UNITS]: 8 + (randomBase % 24),
-              };
-
-              if (parameterMap[parameter] !== undefined) {
-                return parameterMap[parameter];
-              }
-
-              try {
-                const result = originalGetParameter.call(this, parameter);
-                
-                // THÊM BIẾN THỂ NGẪU NHIÊN CHO TẤT CẢ KẾT QUẢ
-                if (typeof result === 'number') {
-                  const variant = (randomBase + parameter) % 1000;
-                  return result + (variant * 0.000001);
-                }
-                
-                return result;
-              } catch (e) {
-                return null;
-              }
-            };
-
-            // 2. GHI ĐÈ READPIXELS - THÊM NOISE VÀO PIXEL DATA
-            const originalReadPixels = WebGLRenderingContext.prototype.readPixels;
-            WebGLRenderingContext.prototype.readPixels = function (x, y, width, height, format, type, pixels) {
-              const result = originalReadPixels.call(this, x, y, width, height, format, type, pixels);
-              
-              if (pixels && pixels.length > 0) {
-                const targetHash = sessionFingerprints.webglHash;
-                let hashSum = 0;
-                for (let i = 0; i < targetHash.length; i++) {
-                  hashSum += targetHash.charCodeAt(i);
-                }
-                
-                // Áp dụng noise pattern PHỨC TẠP
-                for (let i = 0; i < pixels.length; i += 4) {
-                  const pixelIndex = i / 4;
-                  const xPos = pixelIndex % width;
-                  const yPos = Math.floor(pixelIndex / width);
-                  
-                  // Tạo noise độc nhất cho mỗi pixel
-                  const positionFactor = (xPos * 7 + yPos * 13) % 17;
-                  const hashFactor = (hashSum + i) % 11;
-                  const timeFactor = (sessionFingerprints.timestamp + i) % 7;
-                  
-                  const finalNoise = (positionFactor + hashFactor + timeFactor) % 5;
-                  
-                  pixels[i] = (pixels[i] + finalNoise) % 256;         // Red
-                  pixels[i + 1] = (pixels[i + 1] + finalNoise) % 256; // Green
-                  pixels[i + 2] = (pixels[i + 2] + finalNoise) % 256; // Blue
-                }
-              }
-              
-              return result;
-            };
-
-            // 3. GHI ĐÈ GETSHADERPRECISIONFORMAT
-            const originalGetShaderPrecisionFormat = WebGLRenderingContext.prototype.getShaderPrecisionFormat;
-            WebGLRenderingContext.prototype.getShaderPrecisionFormat = function (shaderType, precisionType) {
-              const format = originalGetShaderPrecisionFormat.call(this, shaderType, precisionType);
-              if (format) {
-                // Thay đổi precision để tạo hash khác
-                const randomVariant = sessionFingerprints.webglSeed % 5;
-                return {
-                  rangeMin: format.rangeMin,
-                  rangeMax: format.rangeMax + randomVariant,
-                  precision: format.precision + (randomVariant % 2)
-                };
-              }
-              return format;
-            };
-
-            // 4. GHI ĐÈ GETSUPPORTEDEXTENSIONS
-            const originalGetSupportedExtensions = WebGLRenderingContext.prototype.getSupportedExtensions;
-            WebGLRenderingContext.prototype.getSupportedExtensions = function () {
-              const original = originalGetSupportedExtensions.call(this) || [];
-              
-              // Tạo extensions list độc nhất
-              const modifiedExtensions = [...original];
-              
-              // Loại bỏ extensions debug
-              const debugExtensions = ['WEBGL_debug_renderer_info', 'WEBGL_debug_shaders', 'WEBGL_lose_context'];
-              debugExtensions.forEach(ext => {
-                const index = modifiedExtensions.indexOf(ext);
-                if (index > -1) {
-                  modifiedExtensions.splice(index, 1);
-                }
-              });
-              
-              // Thêm extensions ngẫu nhiên
-              const possibleExtensions = [
-                'WEBGL_compressed_texture_etc',
-                'WEBGL_compressed_texture_astc', 
-                'WEBGL_compressed_texture_s3tc',
-                'WEBGL_depth_texture',
-                'WEBGL_draw_buffers',
-                'OES_texture_float',
-                'OES_texture_half_float',
-                'OES_standard_derivatives',
-                'EXT_texture_filter_anisotropic'
-              ];
-              
-              possibleExtensions.forEach(ext => {
-                const shouldAdd = (sessionFingerprints.webglSeed + ext.length) % 3 === 0;
-                if (shouldAdd && !modifiedExtensions.includes(ext)) {
-                  modifiedExtensions.push(ext);
-                }
-              });
-              
-              return modifiedExtensions.sort(); // Sắp xếp để tạo hash khác
-            };
-
-            console.log("✅ WebGL HASH protection applied");
-          }
-
-          // === AUDIOCONTEXT HASH PROTECTION ===
-          if (window.OfflineAudioContext) {
-            const OriginalOfflineAudioContext = window.OfflineAudioContext;
-            
-            window.OfflineAudioContext = function(numberOfChannels, length, sampleRate) {
-              console.log("🎵 Creating protected OfflineAudioContext");
-              
-              // Thay đổi các tham số để tạo hash khác
-              const modifiedSampleRate = sampleRate + (sessionFingerprints.audioSeed % 100);
-              const modifiedLength = length + (sessionFingerprints.audioSeed % 512);
-              
-              const context = new OriginalOfflineAudioContext(
-                numberOfChannels, 
-                modifiedLength, 
-                modifiedSampleRate
-              );
-              
-              // Ghi đè createAnalyser
-              const originalCreateAnalyser = context.createAnalyser;
-              context.createAnalyser = function() {
-                const analyser = originalCreateAnalyser.call(this);
-                
-                // Fake frequencyBinCount
-                const fakeFreqBin = 1024 + (sessionFingerprints.audioSeed % 256);
-                Object.defineProperty(analyser, 'frequencyBinCount', {
-                  get: function() {
-                    return fakeFreqBin;
-                  },
-                  configurable: false
-                });
-                
-                // Ghi đè getByteFrequencyData
-                const originalGetByteFrequencyData = analyser.getByteFrequencyData;
-                analyser.getByteFrequencyData = function(array) {
-                  const result = originalGetByteFrequencyData.call(this, array);
-                  
-                  if (array && array.length > 0) {
-                    const audioHash = sessionFingerprints.audioHash;
-                    let hashSum = 0;
-                    for (let i = 0; i < audioHash.length; i++) {
-                      hashSum += audioHash.charCodeAt(i);
-                    }
-                    
-                    for (let i = 0; i < array.length; i++) {
-                      const positionFactor = (i * hashSum) % 127;
-                      const timeFactor = (sessionFingerprints.timestamp + i) % 63;
-                      const noise = (positionFactor + timeFactor) % 32;
-                      array[i] = (array[i] + noise) % 256;
-                    }
-                  }
-                  return result;
-                };
-                
-                return analyser;
-              };
-              
-              return context;
-            };
-            
-            window.OfflineAudioContext.prototype = OriginalOfflineAudioContext.prototype;
-          }
-
-          // AudioContext protection
-          if (window.AudioContext || window.webkitAudioContext) {
-            const OriginalAudioContext = window.AudioContext || window.webkitAudioContext;
-            
-            window.AudioContext = function(contextOptions) {
-              const audioContext = new OriginalAudioContext(contextOptions);
-              
-              // Fake currentTime
-              const timeOffset = (sessionFingerprints.audioSeed % 10000) / 100000;
-              Object.defineProperty(audioContext, 'currentTime', {
-                get: function() {
-                  const realTime = Object.getOwnPropertyDescriptor(
-                    OriginalAudioContext.prototype, 
-                    'currentTime'
-                  ).get.call(this);
-                  return realTime + timeOffset;
-                },
-                configurable: false
-              });
-
-              // Fake sampleRate
-              const originalSampleRate = audioContext.sampleRate;
-              Object.defineProperty(audioContext, 'sampleRate', {
-                get: function() {
-                  return originalSampleRate + (sessionFingerprints.audioSeed % 50);
-                },
-                configurable: false
-              });
-
-              return audioContext;
-            };
-            
-            window.AudioContext.prototype = OriginalAudioContext.prototype;
-            if (window.webkitAudioContext) {
-              window.webkitAudioContext = window.AudioContext;
-            }
-
-            console.log("✅ AudioContext HASH protection applied");
-          }
-
-          // === CANVAS PROTECTION ===
-          const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-          CanvasRenderingContext2D.prototype.getImageData = function (...args) {
-            const imageData = originalGetImageData.apply(this, args);
-            
-            const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-              if (i % 20 === 0) {
-                const noise = (i + sessionFingerprints.timestamp) % 4;
-                data[i] = (data[i] + noise) % 256;
-                data[i + 1] = (data[i + 1] + noise) % 256;
-                data[i + 2] = (data[i + 2] + noise) % 256;
-              }
-            }
-            return imageData;
-          };
-
-          console.log("✅ ALL fingerprint protections applied successfully");
-
-        }, { sessionFingerprints });
-
-        console.log("🎯 COMPLETE fingerprint protection injection DONE");
-
-      } catch (error) {
-        console.error("❌ Error applying fingerprint protection:", error);
+    const applyFingerprintToAllPages = async () => {
+      // Áp dụng cho tất cả page hiện có
+      const existingPages = browserContext.pages();
+      for (const page of existingPages) {
+        try {
+          await page.addInitScript(fingerprintScript);
+          console.log(`✅ Applied fingerprint protection to existing page`);
+        } catch (error) {
+          console.error(`❌ Failed to apply protection to existing page:`, error);
+        }
       }
+
+      // Áp dụng cho tất cả page mới
+      browserContext.on("page", async (newPage) => {
+        console.log(`🔄 New page detected, applying fingerprint protection...`);
+        try {
+          await newPage.addInitScript(fingerprintScript);
+          console.log(`✅ Applied fingerprint protection to new page`);
+        } catch (error) {
+          console.error(`❌ Failed to apply protection to new page:`, error);
+        }
+      });
     };
 
-    // ======================================================
-    // ÁP DỤNG BẢO VỆ
-    // ======================================================
-    let page;
-    try {
-      await browserContext.waitForEvent("page");
-      page = browserContext.pages()[0];
-
-      await applyCompleteFingerprintProtection(page, sessionFingerprints);
-      console.log(`✅ Applied COMPLETE fingerprint protection to initial page`);
-    } catch (error) {
-      console.error("❌ Error setting up initial page:", error);
-      page = await browserContext.newPage();
-    }
-
-    browserContext.on("page", async (newPage) => {
-      console.log(`🔄 New page detected, applying fingerprint protection...`);
-
-      try {
-        await applyCompleteFingerprintProtection(newPage, sessionFingerprints);
-        console.log(`✅ Applied fingerprint protection to new page`);
-      } catch (error) {
-        console.error(`❌ Failed to apply protection to new page:`, error);
-      }
-    });
+    // Gọi hàm áp dụng fingerprint
+    await applyFingerprintToAllPages();
 
     // Cleanup khi browser đóng
     browserContext.on("close", () => {
@@ -762,14 +759,15 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
     });
 
     // Chuyển đến URL đích
-    if (page) {
-      await page.goto(targetUrl);
+    const pages = browserContext.pages();
+    if (pages.length > 0) {
+      await pages[0].goto(targetUrl);
       console.log(`🌐 Navigated to: ${targetUrl}`);
     }
 
     return { 
       success: true, 
-      message: `Browser for '${profileName}' opened with NEW fingerprints.`,
+      message: `Browser for '${profileName}' opened with NEW fingerprints APPLIED IMMEDIATELY.`,
       fingerprints: {
         webglHash: webglHash,
         audioHash: audioHash,
