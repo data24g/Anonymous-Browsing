@@ -1,26 +1,21 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
-  // Các hàm liên quan đến Profile
+  // Profile related functions
   getProfiles: () => ipcRenderer.invoke("get-profiles"),
-  // === THAY ĐỔI Ở ĐÂY: Gửi một đối tượng thay vì chuỗi ===
-  createProfile: (profileData) =>
-    ipcRenderer.invoke("create-profile", profileData),
-  deleteProfile: (profileName) =>
-    ipcRenderer.invoke("delete-profile", profileName),
-  getProfileConfig: (profileName) =>
-    ipcRenderer.invoke("get-profile-config", profileName),
-  updateProfileConfig: (profileName, config) =>
-    ipcRenderer.invoke("update-profile-config", profileName, config),
-  openBrowser: (profileName, url) =>
-    ipcRenderer.invoke("open-browser", profileName, url),
+  createProfile: (profileData) => ipcRenderer.invoke("create-profile", profileData),
+  deleteProfile: (profileName) => ipcRenderer.invoke("delete-profile", profileName),
+  getProfileConfig: (profileName) => ipcRenderer.invoke("get-profile-config", profileName),
+  updateProfileConfig: (profileName, config) => ipcRenderer.invoke("update-profile-config", profileName, config),
+  openBrowser: (profileName, url) => ipcRenderer.invoke("open-browser", profileName, url),
+  
+  // FIX: Thêm hàm quản lý browser
+  closeBrowser: (profileName) => ipcRenderer.invoke("close-browser", profileName),
+  getActiveBrowsers: () => ipcRenderer.invoke("get-active-browsers"),
 
-  // Các hàm liên quan đến Proxy (Không thay đổi)
+  // Proxy related functions
   getProxies: () => ipcRenderer.invoke("get-proxies"),
   addProxy: (proxyConfig) => ipcRenderer.invoke("add-proxy", proxyConfig),
-  updateProxy: (oldName, newConfig) =>
-    ipcRenderer.invoke("update-proxy", oldName, newConfig),
+  updateProxy: (oldName, newConfig) => ipcRenderer.invoke("update-proxy", oldName, newConfig),
   deleteProxy: (proxyName) => ipcRenderer.invoke("delete-proxy", proxyName),
-
-  
 });
