@@ -4,6 +4,15 @@ class SecureBrowserApp {
         this.editingProfileName = '';
         this.editingProxyName = '';
         this.isProcessing = false;
+        // Trong constructor, cập nhật userAgentPresets:
+        this.userAgentPresets = {
+            'auto': 'Tự động chọn User Agent phù hợp',
+            'chrome-windows': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+            'edge-windows': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0',
+            'firefox-windows': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0',
+            'chrome-mac': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+            'safari-mac': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'
+        };
         this.init();
     }
 
@@ -12,6 +21,72 @@ class SecureBrowserApp {
         this.loadData();
         this.showSection('profiles');
         this.fixInputIssues();
+        this.setupUserAgentEvents();
+    }
+
+    // ========================================================================
+    // THIẾT LẬP USER AGENT
+    // ========================================================================
+    setupUserAgentEvents() {
+        // User Agent preset change
+        document.getElementById('userAgentPreset').addEventListener('change', (e) => {
+            this.updateUserAgentPreview();
+        });
+
+        // Custom User Agent toggle
+        document.getElementById('useCustomUserAgent').addEventListener('change', (e) => {
+            const customContainer = document.getElementById('customUserAgentContainer');
+            if (e.target.checked) {
+                customContainer.style.display = 'block';
+                document.getElementById('userAgentPreset').disabled = true;
+            } else {
+                customContainer.style.display = 'none';
+                document.getElementById('userAgentPreset').disabled = false;
+                document.getElementById('customUserAgent').value = '';
+            }
+            this.updateUserAgentPreview();
+        });
+
+        // Custom User Agent input
+        document.getElementById('customUserAgent').addEventListener('input', () => {
+            this.updateUserAgentPreview();
+        });
+
+        // Initialize preview
+        this.updateUserAgentPreview();
+    }
+
+    updateUserAgentPreview() {
+        const useCustom = document.getElementById('useCustomUserAgent').checked;
+        const previewElement = document.getElementById('previewText');
+
+        if (useCustom) {
+            const customUA = document.getElementById('customUserAgent').value.trim();
+            if (customUA) {
+                previewElement.textContent = customUA.length > 60 ? customUA.substring(0, 60) + '...' : customUA;
+            } else {
+                previewElement.textContent = 'Tự động chọn User Agent phù hợp';
+            }
+        } else {
+            const preset = document.getElementById('userAgentPreset').value;
+            previewElement.textContent = this.userAgentPresets[preset];
+        }
+    }
+
+    getSelectedUserAgent() {
+        const useCustom = document.getElementById('useCustomUserAgent').checked;
+
+        if (useCustom) {
+            const customUA = document.getElementById('customUserAgent').value.trim();
+            return customUA || 'auto';
+        } else {
+            const preset = document.getElementById('userAgentPreset').value;
+            if (preset === 'auto') {
+                return 'auto';
+            } else {
+                return this.userAgentPresets[preset];
+            }
+        }
     }
 
     // ========================================================================
@@ -119,20 +194,29 @@ class SecureBrowserApp {
         this.currentSection = section;
     }
 
+    // ========================================================================
+    // CẬP NHẬT HIỂN THỊ PROFILE VỚI THÔNG TIN THỰC TẾ TỪ FINGERPRINT
+    // ========================================================================
+    // ========================================================================
+    // CẬP NHẬT HIỂN THỊ PROFILE VỚI THÔNG TIN HASH
+    // ========================================================================
+    // ========================================================================
+    // CẬP NHẬT HIỂN THỊ PROFILE VỚI THÔNG TIN THỰC TẾ TỪ FINGERPRINT
+    // ========================================================================
     async updateProfilesList() {
         this.showLoading(true);
         try {
             const profiles = await window.electronAPI.getProfiles();
             const profilesGrid = document.getElementById('profilesGrid');
-            
+
             if (profiles.length === 0) {
                 profilesGrid.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-user-circle"></i>
-                        <h3>Chưa có profile nào</h3>
-                        <p>Tạo profile đầu tiên để bắt đầu</p>
-                    </div>
-                `;
+                <div class="empty-state">
+                    <i class="fas fa-user-circle"></i>
+                    <h3>Chưa có profile nào</h3>
+                    <p>Tạo profile đầu tiên để bắt đầu</p>
+                </div>
+            `;
                 this.updateStats();
                 return;
             }
@@ -154,50 +238,69 @@ class SecureBrowserApp {
 
             profilesGrid.innerHTML = profilesWithConfig.map(profile => {
                 const config = profile.config;
-                const hardware = config?.customSettings?.hardware || 'auto';
-                const language = config?.customSettings?.language || 'en-US';
+                const customSettings = config?.customSettings || {};
+                const hardware = customSettings.hardware || 'auto';
+                const language = customSettings.language || 'auto';
                 const proxyName = config?.proxyName || 'Không có';
-                
+                const userAgent = customSettings.userAgent || 'auto';
+                const screenResolution = customSettings.screenResolution || 'auto';
+
+                // Hiển thị thông tin thực tế từ fingerprint
+                const displayHardware = this.getAutoDetectedHardware(hardware, config);
+                const displayLanguage = this.getAutoDetectedLanguage(language, config);
+                const displayResolution = this.getAutoDetectedResolution(screenResolution, config);
+                const displayUserAgent = userAgent === 'auto' ?
+                    'Tự động chọn' :
+                    (userAgent.length > 30 ? userAgent.substring(0, 30) + '...' : userAgent);
+
                 return `
-                <div class="profile-card">
-                    <div class="profile-header">
-                        <div class="profile-name">${this.escapeHtml(profile.name)}</div>
-                        <div class="profile-meta">
-                            <i class="fas fa-microchip"></i>
-                            ${this.getHardwareDisplayName(hardware)}
-                        </div>
-                        <div class="profile-actions">
-                            <button class="btn btn-sm btn-danger" onclick="app.deleteProfile('${this.escapeHtml(profile.name)}')">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
+            <div class="profile-card">
+                <div class="profile-header">
+                    <div class="profile-name">${this.escapeHtml(profile.name)}</div>
+                    <div class="profile-meta">
+                        <i class="fas fa-microchip"></i>
+                        ${displayHardware}
                     </div>
-                    <div class="profile-body">
-                        <div class="profile-info">
-                            <div class="info-item">
-                                <span class="info-label">Ngôn ngữ:</span>
-                                <span class="info-value">${language}</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Proxy:</span>
-                                <span class="info-value">${this.escapeHtml(proxyName)}</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Trạng thái:</span>
-                                <span class="badge badge-success">Sẵn sàng</span>
-                            </div>
-                        </div>
-                        <div class="profile-footer">
-                            <button class="btn btn-primary btn-sm" onclick="app.openBrowser('${this.escapeHtml(profile.name)}')">
-                                <i class="fas fa-play"></i> Mở
-                            </button>
-                            <button class="btn btn-secondary btn-sm" onclick="app.editProfileConfig('${this.escapeHtml(profile.name)}')">
-                                <i class="fas fa-cog"></i> Cấu hình
-                            </button>
-                        </div>
+                    <div class="profile-actions">
+                        <button class="btn btn-sm btn-danger" onclick="app.deleteProfile('${this.escapeHtml(profile.name)}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </div>
                 </div>
-                `;
+                <div class="profile-body">
+                    <div class="profile-info">
+                        <div class="info-item">
+                            <span class="info-label">Ngôn ngữ:</span>
+                            <span class="info-value">${displayLanguage}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Proxy:</span>
+                            <span class="info-value">${this.escapeHtml(proxyName)}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">User Agent:</span>
+                            <span class="info-value">${displayUserAgent}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Độ phân giải:</span>
+                            <span class="info-value">${displayResolution}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Trạng thái:</span>
+                            <span class="badge badge-success">Sẵn sàng</span>
+                        </div>
+                    </div>
+                    <div class="profile-footer">
+                        <button class="btn btn-primary btn-sm" onclick="app.openBrowser('${this.escapeHtml(profile.name)}')">
+                            <i class="fas fa-play"></i> Mở
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="app.editProfileConfig('${this.escapeHtml(profile.name)}')">
+                            <i class="fas fa-cog"></i> Cấu hình
+                        </button>
+                    </div>
+                </div>
+            </div>
+            `;
             }).join('');
         } catch (error) {
             this.showNotification('Lỗi khi tải profiles: ' + error.message, 'error');
@@ -207,9 +310,64 @@ class SecureBrowserApp {
         }
     }
 
+    // ========================================================================
+    // PHÁT HIỆN TỰ ĐỘNG THÔNG TIN THỰC TẾ - DỰA TRÊN FINGERPRINT THỰC
+    // ========================================================================
+    getAutoDetectedHardware(hardware, profileConfig) {
+        if (hardware !== 'auto') {
+            return this.getHardwareDisplayName(hardware);
+        }
+
+        // Sử dụng thông tin WebGL thực tế từ profile config
+        const fingerprint = profileConfig?.fingerprint;
+        if (fingerprint?.webglVendor && fingerprint?.webglRenderer) {
+            return `${fingerprint.webglVendor} - ${fingerprint.webglRenderer}`;
+        }
+
+        // Fallback: giả lập phát hiện phần cứng
+        const gpus = [
+            'NVIDIA GeForce RTX 3060',
+            'NVIDIA GeForce RTX 3070',
+            'NVIDIA GeForce RTX 3080',
+            'AMD Radeon RX 6700 XT',
+            'Intel Iris Xe Graphics'
+        ];
+        return gpus[Math.floor(Math.random() * gpus.length)];
+    }
+
+    getAutoDetectedLanguage(language, profileConfig) {
+        if (language !== 'auto') {
+            return this.getLanguageDisplayName(language);
+        }
+
+        // Sử dụng ngôn ngữ thực tế từ profile config
+        const fingerprint = profileConfig?.fingerprint;
+        if (fingerprint?.navigator?.language) {
+            return this.getLanguageDisplayName(fingerprint.navigator.language);
+        }
+
+        return 'English (US)';
+    }
+
+    getAutoDetectedResolution(resolution, profileConfig) {
+        if (resolution !== 'auto') {
+            return resolution;
+        }
+
+        // Sử dụng độ phân giải thực tế từ profile config
+        const fingerprint = profileConfig?.fingerprint;
+        if (fingerprint?.screen) {
+            return `${fingerprint.screen.width}x${fingerprint.screen.height}`;
+        }
+
+        // Fallback
+        const resolutions = ['1920x1080', '2560x1440', '3840x2160'];
+        return resolutions[Math.floor(Math.random() * resolutions.length)];
+    }
+
     getHardwareDisplayName(hardware) {
         const hardwareMap = {
-            'auto': 'Tự động',
+            'auto': 'Tự động phát hiện',
             'rtx3060': 'NVIDIA RTX 3060',
             'rtx3060ti': 'NVIDIA RTX 3060 Ti',
             'rtx3070': 'NVIDIA RTX 3070',
@@ -223,11 +381,26 @@ class SecureBrowserApp {
         return hardwareMap[hardware] || hardware;
     }
 
+    getLanguageDisplayName(language) {
+        const languageMap = {
+            'auto': 'Tự động (en-US)',
+            'en-US': 'English (US)',
+            'vi-VN': 'Tiếng Việt',
+            'zh-CN': '中文 (简体)',
+            'ja-JP': '日本語',
+            'ko-KR': '한국어',
+            'fr-FR': 'Français',
+            'de-DE': 'Deutsch',
+            'es-ES': 'Español'
+        };
+        return languageMap[language] || language;
+    }
+
     async updateProxiesList() {
         try {
             const proxies = await window.electronAPI.getProxies();
             const proxiesList = document.getElementById('proxiesList');
-            
+
             if (proxies.length === 0) {
                 proxiesList.innerHTML = `
                     <div class="empty-state">
@@ -277,7 +450,7 @@ class SecureBrowserApp {
 
         proxySelects.forEach(select => {
             if (select) {
-                select.innerHTML = defaultOption + proxies.map(proxy => 
+                select.innerHTML = defaultOption + proxies.map(proxy =>
                     `<option value="${this.escapeHtml(proxy.name)}">${this.escapeHtml(proxy.name)} - ${this.escapeHtml(proxy.server)}</option>`
                 ).join('');
             }
@@ -287,7 +460,7 @@ class SecureBrowserApp {
     updateStats() {
         const profileCards = document.querySelectorAll('.profile-card');
         const proxyCards = document.querySelectorAll('.proxy-card');
-        
+
         document.getElementById('profilesCount').textContent = profileCards.length;
         document.getElementById('proxiesCount').textContent = proxyCards.length;
     }
@@ -305,12 +478,20 @@ class SecureBrowserApp {
     resetProfileForm() {
         document.getElementById('newProfileName').value = '';
         document.getElementById('newProfileProxySelect').value = '';
+        document.getElementById('userAgentPreset').value = 'auto';
+        document.getElementById('useCustomUserAgent').checked = false;
         document.getElementById('customUserAgent').value = '';
+        document.getElementById('customUserAgentContainer').style.display = 'none';
+        document.getElementById('userAgentPreset').disabled = false;
         document.getElementById('customLanguage').value = 'en-US';
         document.getElementById('customHardware').value = 'auto';
         document.getElementById('customScreenResolution').value = 'auto';
+        this.updateUserAgentPreview();
     }
 
+    // ========================================================================
+    // TẠO PROFILE VỚI USER AGENT MỚI
+    // ========================================================================
     async createProfile() {
         if (this.isProcessing) {
             return;
@@ -318,7 +499,7 @@ class SecureBrowserApp {
 
         const profileName = document.getElementById('newProfileName').value.trim();
         const proxyName = document.getElementById('newProfileProxySelect').value;
-        const customUserAgent = document.getElementById('customUserAgent').value.trim();
+        const userAgent = this.getSelectedUserAgent();
         const customLanguage = document.getElementById('customLanguage').value;
         const customHardware = document.getElementById('customHardware').value;
         const customScreenResolution = document.getElementById('customScreenResolution').value;
@@ -337,9 +518,9 @@ class SecureBrowserApp {
 
         const customSettings = {
             language: customLanguage,
-            userAgent: customUserAgent || undefined,
-            hardware: customHardware !== 'auto' ? customHardware : undefined,
-            screenResolution: customScreenResolution !== 'auto' ? customScreenResolution : undefined
+            userAgent: userAgent,
+            hardware: customHardware,
+            screenResolution: customScreenResolution
         };
 
         this.setProcessing(true);
@@ -372,7 +553,7 @@ class SecureBrowserApp {
 
         const url = document.getElementById('urlToOpen').value.trim();
         let finalUrl = url;
-        
+
         if (!finalUrl) {
             this.showNotification('Vui lòng nhập URL để mở trình duyệt', 'error');
             document.getElementById('urlToOpen').focus();
@@ -494,17 +675,17 @@ class SecureBrowserApp {
     async editProxy(proxyName) {
         const proxies = await window.electronAPI.getProxies();
         const proxyToEdit = proxies.find(p => p.name === proxyName);
-        
+
         if (proxyToEdit) {
             document.getElementById('proxyName').value = proxyToEdit.name;
             document.getElementById('proxyServer').value = proxyToEdit.server;
             document.getElementById('proxyUsername').value = proxyToEdit.username || '';
             document.getElementById('proxyPassword').value = proxyToEdit.password || '';
             this.editingProxyName = proxyToEdit.name;
-            
+
             document.getElementById('proxyModalTitle').innerHTML = '<i class="fas fa-edit"></i> Sửa Proxy';
             document.getElementById('proxyModal').style.display = 'block';
-            
+
             setTimeout(() => {
                 document.getElementById('proxyName').focus();
             }, 100);
@@ -557,7 +738,7 @@ class SecureBrowserApp {
     setProcessing(processing) {
         this.isProcessing = processing;
         const buttons = document.querySelectorAll('button:not(.close-button)');
-        
+
         buttons.forEach(button => {
             if (processing) {
                 button.disabled = true;
@@ -634,7 +815,7 @@ class SecureBrowserApp {
 
         const profiles = await window.electronAPI.getProfiles();
         const url = document.getElementById('urlToOpen').value.trim();
-        
+
         if (!url) {
             this.showNotification('Vui lòng nhập URL để test', 'error');
             document.getElementById('urlToOpen').focus();
@@ -647,18 +828,18 @@ class SecureBrowserApp {
         }
 
         this.showNotification(`Đang mở ${profiles.length} profiles...`, 'info');
-        
+
         for (let i = 0; i < profiles.length; i++) {
             const profile = profiles[i];
             this.showNotification(`Đang mở profile ${i + 1}/${profiles.length}: ${profile.name}`, 'info');
             await this.openBrowser(profile.name);
-            
+
             // Delay giữa các profile để tránh quá tải
             if (i < profiles.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
         }
-        
+
         this.showNotification(`Đã mở tất cả ${profiles.length} profiles`, 'success');
     }
 }

@@ -133,14 +133,43 @@
                         </select>
                     </div>
 
-                    <div class="form-group full-width">
-                        <label for="customUserAgent">User Agent Tùy chỉnh</label>
-                        <textarea id="customUserAgent" placeholder="Để trống để sử dụng user agent mặc định..." rows="3"></textarea>
+                     <div class="form-group full-width">
+                    <label for="userAgentPreset">User Agent</label>
+                    <div class="user-agent-section">
+                        <select id="userAgentPreset" class="config-input">
+                            <option value="auto">🔧 Tự động chọn User Agent</option>
+                            <option value="chrome-windows">🖥️ Chrome Windows (Mới nhất)</option>
+                            <option value="edge-windows">🌐 Edge Windows (Mới nhất)</option>
+                            <option value="firefox-windows">🦊 Firefox Windows (Mới nhất)</option>
+                            <option value="chrome-mac">🍎 Chrome macOS (Mới nhất)</option>
+                            <option value="safari-mac">🍎 Safari macOS (Mới nhất)</option>
+                        </select>
+                        
+                        <div class="custom-user-agent-toggle">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="useCustomUserAgent">
+                                <span class="checkmark"></span>
+                                ✏️ Tùy chỉnh User Agent
+                            </label>
+                        </div>
+
+                        <div class="custom-user-agent-input" id="customUserAgentContainer" style="display: none;">
+                            <textarea id="customUserAgent"
+                                placeholder="Nhập User Agent tùy chỉnh của bạn... Ví dụ: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                                rows="3"></textarea>
+                            <small class="note">Để trống nếu muốn sử dụng User Agent tự động</small>
+                        </div>
+
+                        <div class="user-agent-preview" id="userAgentPreview">
+                            <small>User Agent sẽ sử dụng: <span id="previewText">Tự động chọn User Agent phù hợp</span></small>
+                        </div>
                     </div>
+                </div>
 
                     <div class="form-group">
                         <label for="customLanguage">Ngôn ngữ</label>
                         <select id="customLanguage">
+                            <option value="auto">Tự động (English US)</option>
                             <option value="en-US">English (US)</option>
                             <option value="vi-VN">Tiếng Việt</option>
                             <option value="zh-CN">中文 (简体)</option>
