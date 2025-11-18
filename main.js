@@ -298,7 +298,7 @@ ipcMain.handle(
 
 // --- Mở Trình duyệt ---
 ipcMain.handle("open-browser", async (event, profileName, url) => {
-  const targetUrl = url || "https://whoer.net/";
+  const targetUrl = url || "https://pixelscan.net/";
   const profilePath = path.join(PROFILES_DIR, profileName);
   const userDataDir = path.join(profilePath, "user-data");
   const configFile = path.join(profilePath, "config.json");

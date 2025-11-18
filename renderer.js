@@ -3,6 +3,7 @@ class SecureBrowserApp {
         this.currentSection = 'profiles';
         this.editingProfileName = '';
         this.editingProxyName = '';
+        this.isProcessing = false;
         this.init();
     }
 
@@ -10,6 +11,36 @@ class SecureBrowserApp {
         this.bindEvents();
         this.loadData();
         this.showSection('profiles');
+        this.fixInputIssues();
+    }
+
+    // ========================================================================
+    // FIX: Sửa lỗi không nhập được văn bản
+    // ========================================================================
+    fixInputIssues() {
+        // Prevent default behavior that might block input
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+                e.stopPropagation();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+                e.stopPropagation();
+            }
+        });
+
+        // Fix focus issues
+        document.addEventListener('click', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+                setTimeout(() => {
+                    e.target.focus();
+                }, 10);
+            }
+        });
+
+        console.log('✅ Input issues fix applied');
     }
 
     bindEvents() {
@@ -47,6 +78,21 @@ class SecureBrowserApp {
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
                 this.hideModal(e.target.id);
+            }
+        });
+
+        // Enter key in modals
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                if (document.getElementById('createProfileModal').style.display === 'block') {
+                    this.createProfile();
+                } else if (document.getElementById('proxyModal').style.display === 'block') {
+                    this.saveProxy();
+                }
+            }
+            if (e.key === 'Escape') {
+                this.hideModal('createProfileModal');
+                this.hideModal('proxyModal');
             }
         });
     }
@@ -87,16 +133,38 @@ class SecureBrowserApp {
                         <p>Tạo profile đầu tiên để bắt đầu</p>
                     </div>
                 `;
+                this.updateStats();
                 return;
             }
 
-            profilesGrid.innerHTML = profiles.map(profile => `
+            // Get detailed config for each profile
+            const profilesWithConfig = await Promise.all(
+                profiles.map(async (profile) => {
+                    try {
+                        const config = await window.electronAPI.getProfileConfig(profile.name);
+                        return {
+                            ...profile,
+                            config: config.success ? config.config : null
+                        };
+                    } catch (error) {
+                        return { ...profile, config: null };
+                    }
+                })
+            );
+
+            profilesGrid.innerHTML = profilesWithConfig.map(profile => {
+                const config = profile.config;
+                const hardware = config?.customSettings?.hardware || 'auto';
+                const language = config?.customSettings?.language || 'en-US';
+                const proxyName = config?.proxyName || 'Không có';
+                
+                return `
                 <div class="profile-card">
                     <div class="profile-header">
                         <div class="profile-name">${this.escapeHtml(profile.name)}</div>
                         <div class="profile-meta">
                             <i class="fas fa-microchip"></i>
-                            Hardware: Auto
+                            ${this.getHardwareDisplayName(hardware)}
                         </div>
                         <div class="profile-actions">
                             <button class="btn btn-sm btn-danger" onclick="app.deleteProfile('${this.escapeHtml(profile.name)}')">
@@ -108,11 +176,11 @@ class SecureBrowserApp {
                         <div class="profile-info">
                             <div class="info-item">
                                 <span class="info-label">Ngôn ngữ:</span>
-                                <span class="info-value">en-US</span>
+                                <span class="info-value">${language}</span>
                             </div>
                             <div class="info-item">
                                 <span class="info-label">Proxy:</span>
-                                <span class="info-value">Không có</span>
+                                <span class="info-value">${this.escapeHtml(proxyName)}</span>
                             </div>
                             <div class="info-item">
                                 <span class="info-label">Trạng thái:</span>
@@ -123,18 +191,36 @@ class SecureBrowserApp {
                             <button class="btn btn-primary btn-sm" onclick="app.openBrowser('${this.escapeHtml(profile.name)}')">
                                 <i class="fas fa-play"></i> Mở
                             </button>
-                            <button class="btn btn-secondary btn-sm" onclick="app.editProfile('${this.escapeHtml(profile.name)}')">
+                            <button class="btn btn-secondary btn-sm" onclick="app.editProfileConfig('${this.escapeHtml(profile.name)}')">
                                 <i class="fas fa-cog"></i> Cấu hình
                             </button>
                         </div>
                     </div>
                 </div>
-            `).join('');
+                `;
+            }).join('');
         } catch (error) {
             this.showNotification('Lỗi khi tải profiles: ' + error.message, 'error');
         } finally {
             this.showLoading(false);
+            this.updateStats();
         }
+    }
+
+    getHardwareDisplayName(hardware) {
+        const hardwareMap = {
+            'auto': 'Tự động',
+            'rtx3060': 'NVIDIA RTX 3060',
+            'rtx3060ti': 'NVIDIA RTX 3060 Ti',
+            'rtx3070': 'NVIDIA RTX 3070',
+            'rtx3080': 'NVIDIA RTX 3080',
+            'rtx4090': 'NVIDIA RTX 4090',
+            'rx6700xt': 'AMD RX 6700 XT',
+            'rx6800': 'AMD RX 6800',
+            'intel_iris': 'Intel Iris Xe',
+            'intel_uhd': 'Intel UHD Graphics'
+        };
+        return hardwareMap[hardware] || hardware;
     }
 
     async updateProxiesList() {
@@ -150,6 +236,7 @@ class SecureBrowserApp {
                         <p>Thêm proxy đầu tiên để bắt đầu</p>
                     </div>
                 `;
+                this.updateStats();
                 return;
             }
 
@@ -158,9 +245,9 @@ class SecureBrowserApp {
                     <div class="proxy-info">
                         <div class="proxy-name">${this.escapeHtml(proxy.name)}</div>
                         <div class="proxy-details">
-                            ${proxy.server} 
-                            ${proxy.username ? `• ${proxy.username}` : ''}
-                            ${proxy.timezoneId ? `• ${proxy.timezoneId}` : ''}
+                            ${this.escapeHtml(proxy.server)} 
+                            ${proxy.username ? `• ${this.escapeHtml(proxy.username)}` : ''}
+                            ${proxy.timezoneId ? `• ${this.escapeHtml(proxy.timezoneId)}` : ''}
                         </div>
                     </div>
                     <div class="proxy-actions">
@@ -176,6 +263,7 @@ class SecureBrowserApp {
 
             // Update proxy dropdowns
             this.updateProxyDropdowns(proxies);
+            this.updateStats();
         } catch (error) {
             this.showNotification('Lỗi khi tải proxies: ' + error.message, 'error');
         }
@@ -208,6 +296,10 @@ class SecureBrowserApp {
     showCreateProfileModal() {
         document.getElementById('createProfileModal').style.display = 'block';
         this.resetProfileForm();
+        // Focus on first input
+        setTimeout(() => {
+            document.getElementById('newProfileName').focus();
+        }, 100);
     }
 
     resetProfileForm() {
@@ -220,6 +312,10 @@ class SecureBrowserApp {
     }
 
     async createProfile() {
+        if (this.isProcessing) {
+            return;
+        }
+
         const profileName = document.getElementById('newProfileName').value.trim();
         const proxyName = document.getElementById('newProfileProxySelect').value;
         const customUserAgent = document.getElementById('customUserAgent').value.trim();
@@ -229,6 +325,13 @@ class SecureBrowserApp {
 
         if (!profileName) {
             this.showNotification('Vui lòng nhập tên profile', 'error');
+            document.getElementById('newProfileName').focus();
+            return;
+        }
+
+        // Validate profile name
+        if (!/^[a-zA-Z0-9_-]+$/.test(profileName)) {
+            this.showNotification('Tên profile chỉ được chứa chữ cái, số, gạch dưới và gạch ngang', 'error');
             return;
         }
 
@@ -239,7 +342,7 @@ class SecureBrowserApp {
             screenResolution: customScreenResolution !== 'auto' ? customScreenResolution : undefined
         };
 
-        this.showLoading(true);
+        this.setProcessing(true);
         try {
             const result = await window.electronAPI.createProfile({
                 profileName,
@@ -251,25 +354,36 @@ class SecureBrowserApp {
                 this.showNotification(result.message, 'success');
                 this.hideModal('createProfileModal');
                 await this.updateProfilesList();
+                this.resetProfileForm();
             } else {
                 this.showNotification(result.message, 'error');
             }
         } catch (error) {
             this.showNotification('Lỗi khi tạo profile: ' + error.message, 'error');
         } finally {
-            this.showLoading(false);
+            this.setProcessing(false);
         }
     }
 
     async openBrowser(profileName) {
+        if (this.isProcessing) {
+            return;
+        }
+
         const url = document.getElementById('urlToOpen').value.trim();
         let finalUrl = url;
         
-        if (finalUrl && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+        if (!finalUrl) {
+            this.showNotification('Vui lòng nhập URL để mở trình duyệt', 'error');
+            document.getElementById('urlToOpen').focus();
+            return;
+        }
+
+        if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
             finalUrl = 'https://' + finalUrl;
         }
 
-        this.showLoading(true);
+        this.setProcessing(true);
         try {
             const result = await window.electronAPI.openBrowser(profileName, finalUrl);
             if (!result.success) {
@@ -280,7 +394,20 @@ class SecureBrowserApp {
         } catch (error) {
             this.showNotification('Lỗi khi mở trình duyệt: ' + error.message, 'error');
         } finally {
-            this.showLoading(false);
+            this.setProcessing(false);
+        }
+    }
+
+    async editProfileConfig(profileName) {
+        try {
+            const result = await window.electronAPI.getProfileConfig(profileName);
+            if (result.success) {
+                this.showNotification('Tính năng chỉnh sửa profile đang được phát triển', 'info');
+            } else {
+                this.showNotification('Không thể lấy thông tin profile', 'error');
+            }
+        } catch (error) {
+            this.showNotification('Lỗi khi chỉnh sửa profile: ' + error.message, 'error');
         }
     }
 
@@ -289,7 +416,7 @@ class SecureBrowserApp {
             return;
         }
 
-        this.showLoading(true);
+        this.setProcessing(true);
         try {
             const result = await window.electronAPI.deleteProfile(profileName);
             this.showNotification(result.message, result.success ? 'success' : 'error');
@@ -299,7 +426,7 @@ class SecureBrowserApp {
         } catch (error) {
             this.showNotification('Lỗi khi xóa profile: ' + error.message, 'error');
         } finally {
-            this.showLoading(false);
+            this.setProcessing(false);
         }
     }
 
@@ -308,6 +435,9 @@ class SecureBrowserApp {
         document.getElementById('proxyModal').style.display = 'block';
         document.getElementById('proxyModalTitle').innerHTML = '<i class="fas fa-plus"></i> Thêm Proxy Mới';
         this.resetProxyForm();
+        setTimeout(() => {
+            document.getElementById('proxyName').focus();
+        }, 100);
     }
 
     resetProxyForm() {
@@ -319,11 +449,17 @@ class SecureBrowserApp {
     }
 
     async saveProxy() {
+        if (this.isProcessing) {
+            return;
+        }
+
         const name = document.getElementById('proxyName').value.trim();
         const server = document.getElementById('proxyServer').value.trim();
 
         if (!name || !server) {
             this.showNotification('Tên và Server proxy không được để trống', 'error');
+            if (!name) document.getElementById('proxyName').focus();
+            else document.getElementById('proxyServer').focus();
             return;
         }
 
@@ -334,7 +470,7 @@ class SecureBrowserApp {
             password: document.getElementById('proxyPassword').value.trim(),
         };
 
-        this.showLoading(true);
+        this.setProcessing(true);
         try {
             let result;
             if (this.editingProxyName) {
@@ -351,7 +487,7 @@ class SecureBrowserApp {
         } catch (error) {
             this.showNotification('Lỗi khi lưu proxy: ' + error.message, 'error');
         } finally {
-            this.showLoading(false);
+            this.setProcessing(false);
         }
     }
 
@@ -368,6 +504,10 @@ class SecureBrowserApp {
             
             document.getElementById('proxyModalTitle').innerHTML = '<i class="fas fa-edit"></i> Sửa Proxy';
             document.getElementById('proxyModal').style.display = 'block';
+            
+            setTimeout(() => {
+                document.getElementById('proxyName').focus();
+            }, 100);
         }
     }
 
@@ -376,7 +516,7 @@ class SecureBrowserApp {
             return;
         }
 
-        this.showLoading(true);
+        this.setProcessing(true);
         try {
             const result = await window.electronAPI.deleteProxy(proxyName);
             this.showNotification(result.message, result.success ? 'success' : 'error');
@@ -389,22 +529,48 @@ class SecureBrowserApp {
         } catch (error) {
             this.showNotification('Lỗi khi xóa proxy: ' + error.message, 'error');
         } finally {
-            this.showLoading(false);
+            this.setProcessing(false);
         }
     }
 
     // Utility Methods
     hideModal(modalId) {
         document.getElementById(modalId).style.display = 'none';
+        this.setProcessing(false);
     }
 
     showLoading(show) {
         const overlay = document.getElementById('loadingOverlay');
         if (show) {
             overlay.classList.add('active');
+            // Thêm timeout để tránh loading vĩnh viễn
+            setTimeout(() => {
+                if (overlay.classList.contains('active')) {
+                    this.showNotification('Thao tác đang mất nhiều thời gian hơn dự kiến...', 'warning');
+                }
+            }, 10000);
         } else {
             overlay.classList.remove('active');
         }
+    }
+
+    setProcessing(processing) {
+        this.isProcessing = processing;
+        const buttons = document.querySelectorAll('button:not(.close-button)');
+        
+        buttons.forEach(button => {
+            if (processing) {
+                button.disabled = true;
+                button.style.opacity = '0.6';
+                button.style.cursor = 'not-allowed';
+            } else {
+                button.disabled = false;
+                button.style.opacity = '1';
+                button.style.cursor = 'pointer';
+            }
+        });
+
+        this.showLoading(processing);
     }
 
     showNotification(message, type = 'info') {
@@ -425,11 +591,19 @@ class SecureBrowserApp {
             document.body.appendChild(container);
         }
 
-        document.querySelector('.notification-container').appendChild(notification);
+        const container = document.querySelector('.notification-container');
+        container.appendChild(notification);
 
         // Tự động xóa sau 5 giây
         setTimeout(() => {
-            notification.remove();
+            if (notification.parentNode) {
+                notification.style.animation = 'slideInRight 0.3s ease reverse';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 300);
+            }
         }, 5000);
     }
 
@@ -444,6 +618,7 @@ class SecureBrowserApp {
     }
 
     escapeHtml(unsafe) {
+        if (!unsafe) return '';
         return unsafe
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
@@ -453,25 +628,49 @@ class SecureBrowserApp {
     }
 
     async testAllProfiles() {
+        if (this.isProcessing) {
+            return;
+        }
+
         const profiles = await window.electronAPI.getProfiles();
         const url = document.getElementById('urlToOpen').value.trim();
         
         if (!url) {
             this.showNotification('Vui lòng nhập URL để test', 'error');
+            document.getElementById('urlToOpen').focus();
+            return;
+        }
+
+        if (profiles.length === 0) {
+            this.showNotification('Không có profile nào để test', 'warning');
             return;
         }
 
         this.showNotification(`Đang mở ${profiles.length} profiles...`, 'info');
         
-        for (const profile of profiles) {
+        for (let i = 0; i < profiles.length; i++) {
+            const profile = profiles[i];
+            this.showNotification(`Đang mở profile ${i + 1}/${profiles.length}: ${profile.name}`, 'info');
             await this.openBrowser(profile.name);
+            
             // Delay giữa các profile để tránh quá tải
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            if (i < profiles.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
         }
+        
+        this.showNotification(`Đã mở tất cả ${profiles.length} profiles`, 'success');
     }
 }
 
 // Khởi tạo app khi DOM ready
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new SecureBrowserApp();
+});
+
+// Handle page unload
+window.addEventListener('beforeunload', () => {
+    if (window.app) {
+        window.app.setProcessing(false);
+    }
 });
