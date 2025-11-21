@@ -250,15 +250,15 @@ ipcMain.handle("create-profile", async (event, {
         }
       }
 
-      // 4. Áp dụng độ phân giải màn hình
+      // 4. Áp dụng độ phân giải màn hình - ĐẢM BẢO SỐ NGUYÊN
       if (customSettings.screenResolution && customSettings.screenResolution !== 'auto') {
         const [width, height] = customSettings.screenResolution.split('x').map(Number);
         if (width && height) {
           fingerprint.screen = {
-            width: width,
-            height: height,
-            availWidth: width - 100,
-            availHeight: height - 100,
+            width: Math.round(width),
+            height: Math.round(height),
+            availWidth: Math.round(width - 100),
+            availHeight: Math.round(height - 100),
             colorDepth: 24,
             pixelDepth: 24
           };
@@ -266,9 +266,17 @@ ipcMain.handle("create-profile", async (event, {
         }
       }
     } else {
-      // Mặc định nếu không có custom settings
+      // Mặc định nếu không có custom settings - ĐẢM BẢO SỐ NGUYÊN
       fingerprint.navigator.language = "en-US";
       fingerprint.navigator.languages = ["en-US", "en"];
+      
+      // Đảm bảo screen resolution là số nguyên
+      if (fingerprint.screen) {
+        fingerprint.screen.width = Math.round(fingerprint.screen.width);
+        fingerprint.screen.height = Math.round(fingerprint.screen.height);
+        fingerprint.screen.availWidth = Math.round(fingerprint.screen.availWidth);
+        fingerprint.screen.availHeight = Math.round(fingerprint.screen.availHeight);
+      }
     }
 
     const profileConfig = {
@@ -478,6 +486,29 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
     const profileWebglRenderer = fingerprintData.webglRenderer || generateRandomWebGLRenderer();
     const profileWebglVersion = fingerprintData.webglVersion || "WebGL 1.0 (OpenGL ES 2.0 Chromium)";
 
+    // ========================================================================
+    // LẤY ĐỘ PHÂN GIẢI CHÍNH XÁC TỪ PROFILE CONFIG - FIX QUAN TRỌNG
+    // ========================================================================
+    let finalScreenWidth = Math.round(fingerprint.screen?.width || 1920);
+    let finalScreenHeight = Math.round(fingerprint.screen?.height || 1080);
+
+    // ƯU TIÊN độ phân giải từ custom settings nếu có
+    if (customSettings.screenResolution && customSettings.screenResolution !== 'auto') {
+      const [customWidth, customHeight] = customSettings.screenResolution.split('x').map(Number);
+      if (customWidth && customHeight) {
+        finalScreenWidth = Math.round(customWidth);
+        finalScreenHeight = Math.round(customHeight);
+        console.log(`🎯 Using CUSTOM screen resolution: ${finalScreenWidth}x${finalScreenHeight}`);
+      }
+    } else {
+      console.log(`🎯 Using PROFILE screen resolution: ${finalScreenWidth}x${finalScreenHeight}`);
+    }
+
+    console.log(`📐 SCREEN RESOLUTION CONFIG:`);
+    console.log(`   Profile: ${Math.round(fingerprint.screen?.width)}x${Math.round(fingerprint.screen?.height)}`);
+    console.log(`   Custom: ${customSettings.screenResolution}`);
+    console.log(`   Final: ${finalScreenWidth}x${finalScreenHeight}`);
+
     // 🔧 SESSION FINGERPRINTS VỚI HASH NGẪU NHIÊN
     const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
@@ -496,7 +527,9 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
       webglSeed: Math.floor(Math.random() * 1000000),
       audioSeed: Math.floor(Math.random() * 1000000),
       canvasSeed: Math.floor(Math.random() * 1000000),
-      selectedHardware: selectedHardware
+      selectedHardware: selectedHardware,
+      screenWidth: finalScreenWidth,
+      screenHeight: finalScreenHeight
     };
 
     console.log(`🆕 NEW SESSION: ${sessionId}`);
@@ -523,7 +556,7 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
     }
 
     // ======================================================
-    // FINGERPRINT SCRIPT VỚI HASH NGẪU NHIÊN
+    // FINGERPRINT SCRIPT VỚI HASH NGẪU NHIÊN - ĐÃ FIX SCREEN RESOLUTION
     // ======================================================
     const fingerprintScript = `
     // === FINGERPRINT PROTECTION - VỚI HASH NGẪU NHIÊN ===
@@ -531,12 +564,14 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
       const sessionFingerprints = ${JSON.stringify(sessionFingerprints)};
       const profileLanguage = "${finalLocale}";
       const profileHardware = "${selectedHardware}";
-      const profileResolution = "${fingerprint.screen.width}x${fingerprint.screen.height}";
+      const finalScreenWidth = ${finalScreenWidth};
+      const finalScreenHeight = ${finalScreenHeight};
       
       console.log("🛡️ Applying RANDOM fingerprint protection...");
       console.log("🎲 Random Canvas Hash:", sessionFingerprints.canvasHash);
       console.log("🎲 Random WebGL Hash:", sessionFingerprints.webglHash);
       console.log("🎲 Random Audio Hash:", sessionFingerprints.audioHash);
+      console.log("📐 Screen Resolution:", finalScreenWidth + "x" + finalScreenHeight);
       
       // === GHI ĐÈ NAVIGATOR PROPERTIES ĐỂ PHÙ HỢP VỚI PROFILE ===
       if (profileLanguage && profileLanguage !== 'auto') {
@@ -550,6 +585,44 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
           configurable: false
         });
       }
+
+      // === SCREEN PROPERTIES - ÁP DỤNG ĐỘ PHÂN GIẢI TỪ PROFILE (SỐ NGUYÊN) ===
+      Object.defineProperty(screen, 'width', {
+        get: function() { return finalScreenWidth; },
+        configurable: false
+      });
+      
+      Object.defineProperty(screen, 'height', {
+        get: function() { return finalScreenHeight; },
+        configurable: false
+      });
+      
+      Object.defineProperty(screen, 'availWidth', {
+        get: function() { return finalScreenWidth - 100; },
+        configurable: false
+      });
+      
+      Object.defineProperty(screen, 'availHeight', {
+        get: function() { return finalScreenHeight - 100; },
+        configurable: false
+      });
+
+      // === DEVICE PIXEL RATIO FIX ===
+      Object.defineProperty(window, 'devicePixelRatio', {
+        get: function() { return 1; },
+        configurable: false
+      });
+
+      // Fix cho các properties khác của screen
+      Object.defineProperty(screen, 'colorDepth', {
+        get: function() { return 24; },
+        configurable: false
+      });
+
+      Object.defineProperty(screen, 'pixelDepth', {
+        get: function() { return 24; },
+        configurable: false
+      });
 
       // === CANVAS FINGERPRINT PROTECTION VỚI HASH NGẪU NHIÊN ===
       if (window.CanvasRenderingContext2D) {
@@ -788,32 +861,13 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
         console.log("✅ AudioContext protection applied - Random Hash:", sessionFingerprints.audioHash);
       }
 
-      // === SCREEN PROPERTIES - ÁP DỤNG ĐỘ PHÂN GIẢI TỪ PROFILE ===
-      Object.defineProperty(screen, 'width', {
-        get: function() { return ${fingerprint.screen?.width || 1920}; },
-        configurable: false
-      });
-      
-      Object.defineProperty(screen, 'height', {
-        get: function() { return ${fingerprint.screen?.height || 1080}; },
-        configurable: false
-      });
-      
-      Object.defineProperty(screen, 'availWidth', {
-        get: function() { return ${fingerprint.screen?.availWidth || 1820}; },
-        configurable: false
-      });
-      
-      Object.defineProperty(screen, 'availHeight', {
-        get: function() { return ${fingerprint.screen?.availHeight || 980}; },
-        configurable: false
-      });
-
       console.log("✅ ALL random fingerprint protections applied successfully");
+      console.log("✅ Screen properties fixed - Resolution: " + finalScreenWidth + "x" + finalScreenHeight);
       console.log("🎲 Final Random Hashes - Canvas:", sessionFingerprints.canvasHash, "WebGL:", sessionFingerprints.webglHash, "Audio:", sessionFingerprints.audioHash);
     })();
     `;
 
+    // ĐẢM BẢO viewport và screen properties KHỚP NHAU
     browserContext = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
       proxy: playwrightProxyConfig,
@@ -821,9 +875,15 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
       locale: finalLocale,
       timezoneId: finalTimezone,
       geolocation: finalGeolocation,
+      // QUAN TRỌNG: Viewport phải khớp với screen properties
       viewport: {
-        width: Math.round(fingerprint.screen.width),
-        height: Math.round(fingerprint.screen.height),
+        width: finalScreenWidth,
+        height: finalScreenHeight,
+      },
+      // THÊM screen option để đồng bộ hóa
+      screen: {
+        width: finalScreenWidth,
+        height: finalScreenHeight
       },
       extraHTTPHeaders: {
         ...fingerprintData.headers,
@@ -855,6 +915,9 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
         "--enable-audio-service",
         "--audio-buffer-size=2048",
         "--disable-audio-output",
+        // THÊM các args để fix screen resolution
+        `--window-size=${finalScreenWidth},${finalScreenHeight}`,
+        `--window-position=0,0`
       ],
       ignoreDefaultArgs: [
         "--enable-automation",
@@ -905,7 +968,8 @@ ipcMain.handle("open-browser", async (event, profileName, url) => {
         sessionId: sessionId,
         hardware: selectedHardware,
         language: finalLocale,
-        resolution: `${fingerprint.screen.width}x${fingerprint.screen.height}`
+        resolution: `${finalScreenWidth}x${finalScreenHeight}`,
+        source: customSettings.screenResolution !== 'auto' ? 'custom' : 'profile'
       }
     };
   } catch (error) {
