@@ -65,7 +65,7 @@
                             <h3>Mở URL với Profile</h3>
                         </div>
                         <div class="url-input-group">
-                            <input type="text" id="urlToOpen" placeholder="Nhập URL để mở (vd: https://google.com)" value="https://whoer.net/" />
+                            <input type="text" id="urlToOpen" placeholder="Nhập URL để mở (vd: https://google.com)" value="https://bot.sannysoft.com/" />
                             <button class="btn btn-secondary" id="testAllProfiles">
                                 <i class="fas fa-play"></i> Test All
                             </button>
@@ -133,38 +133,82 @@
                         </select>
                     </div>
 
-                     <div class="form-group full-width">
-                    <label for="userAgentPreset">User Agent</label>
-                    <div class="user-agent-section">
-                        <select id="userAgentPreset" class="config-input">
-                            <option value="auto">🔧 Tự động chọn User Agent</option>
-                            <option value="chrome-windows">🖥️ Chrome Windows (Mới nhất)</option>
-                            <option value="edge-windows">🌐 Edge Windows (Mới nhất)</option>
-                            <option value="firefox-windows">🦊 Firefox Windows (Mới nhất)</option>
-                            <option value="chrome-mac">🍎 Chrome macOS (Mới nhất)</option>
-                            <option value="safari-mac">🍎 Safari macOS (Mới nhất)</option>
+                    <!-- ========================================================================
+                         THIẾT BỊ VÀ TIMEZONE MỚI - ĐÃ ĐƯỢC THÊM VÀO
+                    ======================================================================== -->
+                    <div class="form-group">
+                        <label for="customDeviceType">
+                            <i class="fas fa-mobile-alt"></i>
+                            Loại thiết bị
+                            <span class="tooltip" title="Lựa chọn loại thiết bị sẽ ảnh hưởng đến kích thước màn hình và user agent">
+                                <i class="fas fa-info-circle"></i>
+                            </span>
+                        </label>
+                        <select id="customDeviceType">
+                            <!-- Options sẽ được điền tự động bằng JavaScript -->
+                            <option value="desktop">🖥️ Desktop (1920x1080)</option>
+                            <!-- Các option khác sẽ được thêm bằng renderer.js -->
                         </select>
-                        
-                        <div class="custom-user-agent-toggle">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="useCustomUserAgent">
-                                <span class="checkmark"></span>
-                                ✏️ Tùy chỉnh User Agent
-                            </label>
-                        </div>
+                    </div>
 
-                        <div class="custom-user-agent-input" id="customUserAgentContainer" style="display: none;">
-                            <textarea id="customUserAgent"
-                                placeholder="Nhập User Agent tùy chỉnh của bạn... Ví dụ: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-                                rows="3"></textarea>
-                            <small class="note">Để trống nếu muốn sử dụng User Agent tự động</small>
-                        </div>
+                    <div class="form-group">
+                        <label for="customTimezone">
+                            <i class="fas fa-globe"></i>
+                            Timezone
+                            <span class="tooltip" title="Quan trọng: Timezone phải khớp với location của proxy để tránh bị phát hiện">
+                                <i class="fas fa-info-circle"></i>
+                            </span>
+                        </label>
+                        <select id="customTimezone">
+                            <option value="auto">🌐 Tự động chọn theo location</option>
+                            <option value="America/New_York">🇺🇸 New York (America/New_York)</option>
+                            <option value="America/Los_Angeles">🇺🇸 Los Angeles (America/Los_Angeles)</option>
+                            <option value="America/Chicago">🇺🇸 Chicago (America/Chicago)</option>
+                            <option value="Europe/London">🇬🇧 London (Europe/London)</option>
+                            <option value="Europe/Paris">🇫🇷 Paris (Europe/Paris)</option>
+                            <option value="Europe/Berlin">🇩🇪 Berlin (Europe/Berlin)</option>
+                            <option value="Asia/Ho_Chi_Minh">🇻🇳 Ho Chi Minh (Asia/Ho_Chi_Minh)</option>
+                            <option value="Asia/Bangkok">🇹🇭 Bangkok (Asia/Bangkok)</option>
+                            <option value="Asia/Shanghai">🇨🇳 Shanghai (Asia/Shanghai)</option>
+                            <option value="Asia/Tokyo">🇯🇵 Tokyo (Asia/Tokyo)</option>
+                            <option value="Asia/Seoul">🇰🇷 Seoul (Asia/Seoul)</option>
+                            <option value="Australia/Sydney">🇦🇺 Sydney (Australia/Sydney)</option>
+                        </select>
+                        <small class="note warning">⚠️ Nếu dùng proxy, chọn timezone khớp với location của proxy</small>
+                    </div>
 
-                        <div class="user-agent-preview" id="userAgentPreview">
-                            <small>User Agent sẽ sử dụng: <span id="previewText">Tự động chọn User Agent phù hợp</span></small>
+                    <div class="form-group full-width">
+                        <label for="userAgentPreset">User Agent</label>
+                        <div class="user-agent-section">
+                            <select id="userAgentPreset" class="config-input">
+                                <option value="auto">🔧 Tự động chọn User Agent</option>
+                                <option value="chrome-windows">🖥️ Chrome Windows (Mới nhất)</option>
+                                <option value="edge-windows">🌐 Edge Windows (Mới nhất)</option>
+                                <option value="firefox-windows">🦊 Firefox Windows (Mới nhất)</option>
+                                <option value="chrome-mac">🍎 Chrome macOS (Mới nhất)</option>
+                                <option value="safari-mac">🍎 Safari macOS (Mới nhất)</option>
+                            </select>
+                            
+                            <div class="custom-user-agent-toggle">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="useCustomUserAgent">
+                                    <span class="checkmark"></span>
+                                    ✏️ Tùy chỉnh User Agent
+                                </label>
+                            </div>
+
+                            <div class="custom-user-agent-input" id="customUserAgentContainer" style="display: none;">
+                                <textarea id="customUserAgent"
+                                    placeholder="Nhập User Agent tùy chỉnh của bạn... Ví dụ: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                                    rows="3"></textarea>
+                                <small class="note">Để trống nếu muốn sử dụng User Agent tự động</small>
+                            </div>
+
+                            <div class="user-agent-preview" id="userAgentPreview">
+                                <small>User Agent sẽ sử dụng: <span id="previewText">Tự động chọn User Agent phù hợp</span></small>
+                            </div>
                         </div>
                     </div>
-                </div>
 
                     <div class="form-group">
                         <label for="customLanguage">Ngôn ngữ</label>
@@ -181,32 +225,63 @@
                         </select>
                     </div>
 
+                    <!-- ========================================================================
+                         PHẦN CỨNG MỚI - ĐÃ ĐƯỢC CẬP NHẬT
+                    ======================================================================== -->
                     <div class="form-group">
-                        <label for="customHardware">Phần cứng GPU</label>
+                        <label for="customHardware">
+                            <i class="fas fa-microchip"></i>
+                            Phần cứng GPU
+                            <span class="tooltip" title="Lựa chọn card đồ họa sẽ ảnh hưởng đến hiệu năng và fingerprint">
+                                <i class="fas fa-info-circle"></i>
+                            </span>
+                        </label>
                         <select id="customHardware">
-                            <option value="auto">Tự động</option>
-                            <option value="rtx3060">NVIDIA GeForce RTX 3060</option>
-                            <option value="rtx3060ti">NVIDIA GeForce RTX 3060 Ti</option>
-                            <option value="rtx3070">NVIDIA GeForce RTX 3070</option>
-                            <option value="rtx3080">NVIDIA GeForce RTX 3080</option>
-                            <option value="rtx4090">NVIDIA GeForce RTX 4090</option>
-                            <option value="rx6700xt">AMD Radeon RX 6700 XT</option>
-                            <option value="rx6800">AMD Radeon RX 6800</option>
-                            <option value="intel_iris">Intel Iris Xe</option>
-                            <option value="intel_uhd">Intel UHD Graphics</option>
+                            <!-- Options sẽ được điền tự động bằng JavaScript -->
+                            <option value="auto">🔄 Tự động chọn phần cứng phù hợp</option>
+                            <!-- Các option khác sẽ được thêm bằng renderer.js -->
                         </select>
+                        <small class="note">Hệ thống sẽ tự động ghép nối CPU và RAM phù hợp</small>
                     </div>
 
                     <div class="form-group full-width">
-                        <label for="customScreenResolution">Độ phân giải màn hình</label>
-                        <select id="customScreenResolution">
-                            <option value="auto">Tự động</option>
-                            <option value="1920x1080">1920x1080 (Full HD)</option>
-                            <option value="2560x1440">2560x1440 (2K)</option>
-                            <option value="3840x2160">3840x2160 (4K)</option>
-                            <option value="1366x768">1366x768</option>
-                            <option value="1536x864">1536x864</option>
-                        </select>
+                        <label>Độ phân giải màn hình</label>
+                        <div class="static-input">Tự động theo thiết bị</div>
+                        <small class="note">Độ phân giải sẽ tự động thay đổi theo loại thiết bị đã chọn.</small>
+                    </div>
+
+                    <!-- Thông tin hệ thống tự động -->
+                    <div class="form-group full-width system-info">
+                        <div class="info-card">
+                            <h4>🖥️ Thông tin hệ thống tự động</h4>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <span class="info-label">CPU Cores:</span>
+                                    <span class="info-value" id="autoCpuInfo">Tự động chọn</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">RAM:</span>
+                                    <span class="info-value" id="autoRamInfo">Tự động chọn</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">WebGL:</span>
+                                    <span class="info-value" id="autoWebglInfo">Tự động chọn</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Timezone:</span>
+                                    <span class="info-value" id="autoTimezoneInfo">Tự động chọn</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Device:</span>
+                                    <span class="info-value" id="autoDeviceInfo">Desktop</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Location:</span>
+                                    <span class="info-value" id="autoLocationInfo">Tự động theo timezone</span>
+                                </div>
+                            </div>
+                            <small class="note warning">⚠️ Để pass Pixelscan: Timezone và Location phải khớp với Proxy (nếu có)</small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -233,20 +308,47 @@
                 </div>
                 <div class="form-group">
                     <label for="proxyServer">Server *</label>
-                    <input type="text" id="proxyServer" placeholder="http://ip:port hoặc https://ip:port" />
+                    <input type="text" id="proxyServer" placeholder="ip:port hoặc ip:port:username:password (vd: 127.0.0.1:8080 hoặc 127.0.0.1:8080:user:pass)" />
+                    <small class="note">Định dạng: IP:Port hoặc IP:Port:Username:Password</small>
+                    <div id="proxyPreview" class="proxy-preview" style="display: none;"></div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="proxyUsername">Username</label>
-                        <input type="text" id="proxyUsername" placeholder="Tùy chọn" />
+                        <input type="text" id="proxyUsername" placeholder="Tùy chọn (hoặc nhập trong server)" />
                     </div>
                     <div class="form-group">
                         <label for="proxyPassword">Password</label>
-                        <input type="password" id="proxyPassword" placeholder="Tùy chọn" />
+                        <input type="password" id="proxyPassword" placeholder="Tùy chọn (hoặc nhập trong server)" />
+                    </div>
+                </div>
+                
+                <!-- Thông tin Proxy Location -->
+                <div class="proxy-location-info" id="proxyLocationInfo" style="display: none;">
+                    <div class="location-card">
+                        <h4>📍 Thông tin Location của Proxy</h4>
+                        <div class="location-details">
+                            <div class="location-item">
+                                <span class="location-label">Country:</span>
+                                <span class="location-value" id="proxyCountry">Đang tải...</span>
+                            </div>
+                            <div class="location-item">
+                                <span class="location-label">City:</span>
+                                <span class="location-value" id="proxyCity">Đang tải...</span>
+                            </div>
+                            <div class="location-item">
+                                <span class="location-label">Timezone:</span>
+                                <span class="location-value" id="proxyTimezone">Đang tải...</span>
+                            </div>
+                        </div>
+                        <small class="note success">✅ Khi tạo profile, hãy chọn timezone khớp với location này</small>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
+                <button class="btn btn-info" id="testProxyBtn" style="margin-right: auto;">
+                    <i class="fas fa-bolt"></i> Test Proxy
+                </button>
                 <button class="btn btn-secondary" id="cancelProxy">Hủy</button>
                 <button class="btn btn-primary" id="saveProxyBtn">
                     <i class="fas fa-save"></i> Lưu Proxy

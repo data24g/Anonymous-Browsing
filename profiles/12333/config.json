@@ -1,0 +1,43 @@
+{
+  "name": "12333",
+  "createdAt": "2025-12-01T14:27:22.281Z",
+  "proxyName": "yeah",
+  "fingerprint": {
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "availWidth": 1820,
+      "availHeight": 980,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+      "language": "en-US",
+      "languages": [
+        "en-US",
+        "en",
+        "en"
+      ],
+      "platform": "Win32",
+      "hardwareConcurrency": 4,
+      "deviceMemory": 8
+    },
+    "webglVendor": "Intel Inc.",
+    "webglRenderer": "Intel(R) UHD Graphics 620",
+    "webglVersion": "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
+    "timezoneId": "Asia/Singapore",
+    "cpuCores": 4,
+    "deviceMemory": 8,
+    "canvasNoise": 0.0012,
+    "audioNoise": 0.003
+  },
+  "customSettings": {
+    "language": "en-US",
+    "userAgent": "auto",
+    "hardware": "intel_uhd_620",
+    "screenResolution": "1920x1080",
+    "deviceType": "desktop",
+    "timezone": "auto"
+  }
+}

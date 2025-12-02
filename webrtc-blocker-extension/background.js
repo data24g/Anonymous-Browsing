@@ -1,14 +1,18 @@
+// Disable WebRTC non-proxied UDP
 chrome.privacy.network.webRTCIPHandlingPolicy.set({
-  value: "disable_non_proxied_udp",
+  value: 'disable_non_proxied_udp',
+  scope: 'regular'
 });
 
-chrome.webRequest.onBeforeRequest.addListener(
-  function (details) {
-    // Chặn các request WebRTC
-    if (details.url.includes("stun:") || details.url.includes("turn:")) {
-      return { cancel: true };
-    }
-  },
-  { urls: ["<all_urls>"] },
-  ["blocking"]
-);
+// Block WebRTC entirely for better privacy
+chrome.contentSettings['media-stream-camera'].set({
+  primaryPattern: '<all_urls>',
+  setting: 'block'
+});
+
+chrome.contentSettings['media-stream-microphone'].set({
+  primaryPattern: '<all_urls>',
+  setting: 'block'
+});
+
+console.log('WebRTC Blocker extension loaded');

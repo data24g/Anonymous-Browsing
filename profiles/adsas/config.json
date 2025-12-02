@@ -1,0 +1,43 @@
+{
+  "name": "adsas",
+  "createdAt": "2025-12-01T09:24:14.016Z",
+  "proxyName": "test",
+  "fingerprint": {
+    "screen": {
+      "width": 1366,
+      "height": 768,
+      "availWidth": 1266,
+      "availHeight": 668,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+      "language": "en-US",
+      "languages": [
+        "en-US",
+        "en",
+        "en"
+      ],
+      "platform": "Win32",
+      "hardwareConcurrency": 8,
+      "deviceMemory": 16
+    },
+    "webglVendor": "NVIDIA Corporation",
+    "webglRenderer": "NVIDIA GeForce RTX 3060",
+    "webglVersion": "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
+    "timezoneId": "Europe/London",
+    "cpuCores": 8,
+    "deviceMemory": 16,
+    "canvasNoise": 0.0045,
+    "audioNoise": 0.0046
+  },
+  "customSettings": {
+    "language": "en-US",
+    "userAgent": "chrome-mac",
+    "hardware": "auto",
+    "screenResolution": "1366x768",
+    "deviceType": "laptop",
+    "timezone": "auto"
+  }
+}

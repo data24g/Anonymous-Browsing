@@ -1,0 +1,43 @@
+{
+  "name": "12312",
+  "createdAt": "2025-12-01T09:44:51.005Z",
+  "proxyName": "yeah",
+  "fingerprint": {
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "availWidth": 1820,
+      "availHeight": 980,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+      "language": "en-US",
+      "languages": [
+        "en-US",
+        "en",
+        "en"
+      ],
+      "platform": "Win32",
+      "hardwareConcurrency": 6,
+      "deviceMemory": 16
+    },
+    "webglVendor": "NVIDIA Corporation",
+    "webglRenderer": "NVIDIA GeForce MX250",
+    "webglVersion": "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
+    "timezoneId": "Europe/London",
+    "cpuCores": 6,
+    "deviceMemory": 16,
+    "canvasNoise": 0.0013,
+    "audioNoise": 0.0037
+  },
+  "customSettings": {
+    "language": "en-US",
+    "userAgent": "auto",
+    "hardware": "auto",
+    "screenResolution": "1920x1080",
+    "deviceType": "desktop",
+    "timezone": "auto"
+  }
+}
