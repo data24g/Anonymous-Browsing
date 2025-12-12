@@ -95,11 +95,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ t, onLoginSuccess }) => {
       <div className="w-full max-w-md bg-white dark:bg-slate-850 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-300">
         <div className="p-8">
           <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg transform ">
+            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg transform rotate-3">
               <img
                 src="/logo.png"
                 alt="Logo"
-                className="w-14 h-14 object-contain"
+                className="w-16 h-16 object-contain"
               />
             </div>
           </div>
@@ -123,6 +123,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ t, onLoginSuccess }) => {
                 setFormData({ ...formData, email: e.target.value })
               }
               disabled={isLoading}
+              autoFocus // Tự động focus vào ô này khi component xuất hiện
             />
             <Input
               icon={<Key className="w-5 h-5" />}
