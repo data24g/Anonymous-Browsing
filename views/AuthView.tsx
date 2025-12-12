@@ -95,7 +95,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ t, onLoginSuccess }) => {
       <div className="w-full max-w-md bg-white dark:bg-slate-850 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-300">
         <div className="p-8">
           <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg transform rotate-3">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-lg">
               <img
                 src="/logo.png"
                 alt="Logo"
