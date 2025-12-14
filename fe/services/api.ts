@@ -37,107 +37,30 @@ const getCurrentUserEmail = (): string | null => {
   return null;
 };
 
-/**
- * Fallback: Tạo profile trong localStorage
- */
-const createProfileLocalStorage = (profile: Omit<ProfileItem, 'id' | 'createdAt' | 'updatedAt'>): ProfileItem => {
-  const userId = getCurrentUserEmail();
-  if (!userId) {
-    throw new Error('Vui lòng đăng nhập để tạo profile');
-  }
-
-  const newProfile: ProfileItem = {
-    ...profile,
-    userId,
-    id: Date.now().toString(),
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-
-  // Lưu vào localStorage
-  try {
-    const existing = localStorage.getItem('accsafe_profiles');
-    const profiles: ProfileItem[] = existing ? JSON.parse(existing) : [];
-    profiles.push(newProfile);
-    localStorage.setItem('accsafe_profiles', JSON.stringify(profiles));
-  } catch (e) {
-    console.error('[ProfileAPI] Error saving to localStorage:', e);
-  }
-
-  return newProfile;
-};
+// Đã loại bỏ tất cả fallback localStorage - Tất cả dữ liệu phải lưu trên server 
 
 /**
- * Fallback: Lấy profiles từ localStorage
+ * Kiểm tra kết nối đến server trước khi thực hiện request
  */
-const getProfilesLocalStorage = (): ProfileItem[] => {
+const testConnection = async (apiUrl: string): Promise<boolean> => {
   try {
-    const userId = getCurrentUserEmail();
-    if (!userId) return [];
-
-    const existing = localStorage.getItem('accsafe_profiles');
-    const profiles: ProfileItem[] = existing ? JSON.parse(existing) : [];
-    // Chỉ trả về profiles của user hiện tại
-    return profiles.filter(p => p.userId === userId);
-  } catch (e) {
-    console.error('[ProfileAPI] Error reading from localStorage:', e);
-    return [];
-  }
-};
-
-/**
- * Fallback: Cập nhật profile trong localStorage
- */
-const updateProfileLocalStorage = (profileId: string, updates: Partial<ProfileItem>): ProfileItem => {
-  try {
-    const userId = getCurrentUserEmail();
-    if (!userId) {
-      throw new Error('Vui lòng đăng nhập');
-    }
-
-    const existing = localStorage.getItem('accsafe_profiles');
-    const profiles: ProfileItem[] = existing ? JSON.parse(existing) : [];
-    const profileIndex = profiles.findIndex(p => p.id === profileId && p.userId === userId);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 giây cho health check
     
-    if (profileIndex === -1) {
-      throw new Error('Không tìm thấy profile');
-    }
-
-    const updatedProfile: ProfileItem = {
-      ...profiles[profileIndex],
-      ...updates,
-      updatedAt: Date.now(),
-    };
-
-    profiles[profileIndex] = updatedProfile;
-    localStorage.setItem('accsafe_profiles', JSON.stringify(profiles));
-    return updatedProfile;
-  } catch (e) {
-    console.error('[ProfileAPI] Error updating in localStorage:', e);
-    throw e;
+    // Thử kết nối đến endpoint đơn giản (có thể là root hoặc một endpoint không cần auth)
+    const testUrl = apiUrl.replace('/api', '');
+    const response = await fetch(testUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    return true; // Nếu có response (dù status code là gì) nghĩa là server đang chạy
+  } catch (error: any) {
+    return false; // Không thể kết nối
   }
 };
-
-/**
- * Fallback: Xóa profile từ localStorage
- */
-const deleteProfileLocalStorage = (profileId: string): void => {
-  try {
-    const userId = getCurrentUserEmail();
-    if (!userId) {
-      throw new Error('Vui lòng đăng nhập');
-    }
-
-    const existing = localStorage.getItem('accsafe_profiles');
-    const profiles: ProfileItem[] = existing ? JSON.parse(existing) : [];
-    // Chỉ xóa profile của user hiện tại
-    const filtered = profiles.filter(p => !(p.id === profileId && p.userId === userId));
-    localStorage.setItem('accsafe_profiles', JSON.stringify(filtered));
-  } catch (e) {
-    console.error('[ProfileAPI] Error deleting from localStorage:', e);
-    throw e;
-  }
-}; 
 
 export const authApi = {
   /**
@@ -147,109 +70,107 @@ export const authApi = {
    */
   login: async (email: string, password: string): Promise<User> => {
     const config = getApiConfig();
-    const urls = [
-      config.useLocalServer ? config.localUrl : config.remoteUrl,
-      config.useLocalServer ? config.remoteUrl : config.localUrl,
-    ];
+    // Chỉ dùng remote server, không fallback về localhost
+    const apiUrl = config.remoteUrl;
+    
+    // Kiểm tra kết nối trước (optional - có thể bỏ qua nếu muốn thử trực tiếp)
+    console.log(`[AuthAPI] Checking connection to remote server: ${apiUrl}`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 giây timeout
 
-    let lastError: Error | null = null;
-
-    // Thử cả hai server nếu một server fail
-    for (let i = 0; i < urls.length; i++) {
-      const apiUrl = urls[i];
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 giây timeout
-
-      try {
-        console.log(`[AuthAPI] Attempting login with server ${i + 1}/${urls.length}: ${apiUrl}`);
-        
-        const response = await fetch(`${apiUrl}/auth/login`, {
-          method: 'POST',
-          headers: { 
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-          },
-          body: JSON.stringify({ email, password }),
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-        
-        // Xử lý lỗi từ Server trả về (VD: 401 Unauthorized, 400 Bad Request)
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          const serverError = new Error(errorData.message || `Lỗi đăng nhập: ${response.status}`);
-          // Lỗi từ server (401, 400, etc.) - không retry, throw ngay
-          throw serverError;
-        }
-
-        const data = await response.json();
-        
-        // Lưu Token vào LocalStorage để dùng cho các request sau (Profile, Proxy...)
-        if (data.token) {
-            localStorage.setItem('auth_token', data.token);
-        }
-
-        // Nếu thành công với fallback server, lưu cấu hình mới
-        if (i === 1) {
-          saveApiConfig({ useLocalServer: !config.useLocalServer });
-          console.log(`[AuthAPI] Login successful with fallback server: ${apiUrl}`);
-        }
-
-        // Map dữ liệu từ Server về đúng định dạng User của App
-        return {
-          username: data.user.name || email.split('@')[0],
-          email: data.user.email,
-          isLoggedIn: true,
-          isAdmin: data.user.role === 'admin'
-        };
-      } catch (error: any) {
-        clearTimeout(timeoutId);
-        lastError = error;
-
-        // Nếu là lỗi từ server (401, 400, etc.) - không retry
-        if (error.message && !error.message.includes('fetch') && !error.message.includes('Failed to fetch') && !error.message.includes('network') && error.name !== 'AbortError') {
-          console.error(`[AuthAPI] Server returned error:`, error.message);
-          throw error;
-        }
-
-        // Nếu là timeout
-        if (error.name === 'AbortError') {
-          console.warn(`[AuthAPI] Timeout connecting to ${apiUrl}`);
-          if (i < urls.length - 1) {
-            console.warn(`[AuthAPI] Trying next server...`);
-            continue;
-          }
-          throw new Error('Kết nối đến server quá lâu. Vui lòng kiểm tra kết nối mạng.');
-        }
-
-        // Nếu là lỗi network và còn server khác để thử
-        if (i < urls.length - 1) {
-          console.warn(`[AuthAPI] Login failed with server ${i + 1} (${apiUrl}), trying fallback...`);
-          continue;
-        }
-
-        // Đã thử hết cả hai server
-        console.error(`[AuthAPI] All servers failed. Last error:`, error);
+    try {
+      console.log(`[AuthAPI] Attempting login with remote server: ${apiUrl}`);
+      
+      const response = await fetch(`${apiUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({ email, password }),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      // Xử lý lỗi từ Server trả về (VD: 401 Unauthorized, 400 Bad Request)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const serverError = new Error(errorData.message || `Lỗi đăng nhập: ${response.status}`);
+        throw serverError;
       }
-    }
 
-    // Nếu đến đây, cả hai server đều fail
-    const errorMessage = lastError?.message || 'Không thể kết nối đến máy chủ';
-    if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Failed')) {
-      throw new Error('Không thể kết nối đến máy chủ. Vui lòng kiểm tra:\n1. Server có đang chạy không?\n2. Kết nối mạng có ổn định không?\n3. Firewall có chặn kết nối không?');
+      const data = await response.json();
+      
+      // Lưu Token vào LocalStorage để dùng cho các request sau (Profile, Proxy...)
+      if (data.token) {
+          localStorage.setItem('auth_token', data.token);
+      }
+
+      // Đảm bảo config luôn dùng remote server
+      if (config.useLocalServer) {
+        saveApiConfig({ useLocalServer: false });
+        console.log(`[AuthAPI] Config updated to use remote server`);
+      }
+
+      console.log(`[AuthAPI] Login successful with remote server: ${apiUrl}`);
+
+      // Map dữ liệu từ Server về đúng định dạng User của App
+      return {
+        username: data.user.name || email.split('@')[0],
+        email: data.user.email,
+        isLoggedIn: true,
+        isAdmin: data.user.role === 'admin'
+      };
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+
+      // Nếu là lỗi từ server (401, 400, etc.) - throw ngay
+      if (error.message && !error.message.includes('fetch') && !error.message.includes('Failed to fetch') && !error.message.includes('network') && !error.message.includes('ERR_CONNECTION') && error.name !== 'AbortError') {
+        console.error(`[AuthAPI] Server returned error:`, error.message);
+        throw error;
+      }
+
+      // Xử lý các loại lỗi kết nối cụ thể
+      const errorMessage = error.message || '';
+      const errorName = error.name || '';
+      
+      // Lỗi connection refused - server không chạy hoặc không thể truy cập
+      if (errorMessage.includes('ERR_CONNECTION_REFUSED') || errorMessage.includes('ECONNREFUSED')) {
+        console.error(`[AuthAPI] Connection refused to ${apiUrl}`);
+        throw new Error(`Không thể kết nối đến server ${apiUrl.replace('/api', '')}.\n\nNguyên nhân có thể:\n1. Server chưa được khởi động\n2. Port 3000 bị chặn bởi firewall\n3. IP server không đúng hoặc không khả dụng\n4. Server đang bảo trì\n\nVui lòng liên hệ quản trị viên để kiểm tra.`);
+      }
+      
+      // Lỗi timeout
+      if (errorName === 'AbortError' || errorMessage.includes('timeout')) {
+        throw new Error(`Kết nối đến server quá lâu (timeout).\n\nServer: ${apiUrl.replace('/api', '')}\n\nVui lòng kiểm tra:\n1. Kết nối mạng có ổn định không?\n2. Server có đang phản hồi không?`);
+      }
+      
+      // Lỗi network chung
+      if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Failed to fetch')) {
+        throw new Error(`Không thể kết nối đến máy chủ.\n\nServer: ${apiUrl.replace('/api', '')}\n\nVui lòng kiểm tra:\n1. Server có đang chạy không?\n2. Kết nối mạng có ổn định không?\n3. Firewall có chặn kết nối không?\n4. Địa chỉ IP server có đúng không?`);
+      }
+      
+      // Lỗi khác
+      console.error(`[AuthAPI] Unknown error:`, error);
+      throw new Error(`Lỗi kết nối: ${errorMessage || 'Không xác định được nguyên nhân'}`);
     }
-    throw lastError || new Error('Không thể kết nối đến máy chủ');
   },
 
   /**
    * Gọi API Đăng ký
    * Phương thức: POST
    * Body: { email, password }
+   * Chỉ dùng remote server, không fallback về localhost
    */
   register: async (email: string, password: string): Promise<User> => {
     try {
-        const apiUrl = await getAvailableApiUrl();
+        const config = getApiConfig();
+        const apiUrl = config.remoteUrl; // Chỉ dùng remote server
+        
+        console.log(`[AuthAPI] Attempting register with remote server: ${apiUrl}`);
+        
         const response = await fetch(`${apiUrl}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -262,6 +183,12 @@ export const authApi = {
         }
 
         const data = await response.json();
+        
+        // Đảm bảo config luôn dùng remote server
+        if (config.useLocalServer) {
+          saveApiConfig({ useLocalServer: false });
+          console.log(`[AuthAPI] Config updated to use remote server`);
+        }
         
         if (data.token) {
             localStorage.setItem('auth_token', data.token);
@@ -282,7 +209,28 @@ export const authApi = {
 
     } catch (error: any) {
         console.error("Register Error:", error);
-        throw new Error(error.message || 'Không thể kết nối đến máy chủ');
+        
+        // Xử lý các loại lỗi kết nối cụ thể
+        const errorMessage = error.message || '';
+        const errorName = error.name || '';
+        
+        // Lỗi connection refused
+        if (errorMessage.includes('ERR_CONNECTION_REFUSED') || errorMessage.includes('ECONNREFUSED')) {
+          throw new Error(`Không thể kết nối đến server ${config.remoteUrl.replace('/api', '')}.\n\nNguyên nhân có thể:\n1. Server chưa được khởi động\n2. Port 3000 bị chặn bởi firewall\n3. IP server không đúng hoặc không khả dụng\n4. Server đang bảo trì\n\nVui lòng liên hệ quản trị viên để kiểm tra.`);
+        }
+        
+        // Lỗi timeout
+        if (errorName === 'AbortError' || errorMessage.includes('timeout')) {
+          throw new Error(`Kết nối đến server quá lâu (timeout).\n\nServer: ${config.remoteUrl.replace('/api', '')}\n\nVui lòng kiểm tra kết nối mạng.`);
+        }
+        
+        // Lỗi network chung
+        if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Failed to fetch')) {
+          throw new Error(`Không thể kết nối đến máy chủ.\n\nServer: ${config.remoteUrl.replace('/api', '')}\n\nVui lòng kiểm tra:\n1. Server có đang chạy không?\n2. Kết nối mạng có ổn định không?\n3. Firewall có chặn kết nối không?`);
+        }
+        
+        // Lỗi từ server (400, 401, etc.)
+        throw new Error(errorMessage);
     }
   }
 };
@@ -314,61 +262,26 @@ export const profileAPI = {
       });
 
       if (!response.ok) {
-        // Nếu endpoint chưa tồn tại (404), fallback về localStorage
-        if (response.status === 404) {
-          console.warn('[ProfileAPI] Endpoint /api/profiles chưa được implement, sử dụng localStorage fallback');
-          return getProfilesLocalStorage();
-        }
         if (response.status === 401) {
           throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        }
+        if (response.status === 404) {
+          throw new Error('Server không hỗ trợ endpoint này. Vui lòng kiểm tra lại server.');
         }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `Lỗi khi tải profiles: ${response.status}`);
       }
 
       const data = await response.json();
-      const serverProfiles = data.profiles || [];
-      
-      // Đồng bộ: Xóa các profile trong localStorage không còn trong server
-      // (để tránh trường hợp đã xóa trên server nhưng vẫn còn trong localStorage)
-      try {
-        const userId = getCurrentUserEmail();
-        if (userId) {
-          const existing = localStorage.getItem('accsafe_profiles');
-          const localProfiles: ProfileItem[] = existing ? JSON.parse(existing) : [];
-          const serverProfileIds = new Set(serverProfiles.map((p: ProfileItem) => p.id));
-          
-          // Chỉ giữ lại profiles có trong server hoặc không thuộc user hiện tại
-          const syncedProfiles = localProfiles.filter(p => 
-            p.userId !== userId || serverProfileIds.has(p.id)
-          );
-          
-          // Thêm các profile mới từ server vào localStorage
-          serverProfiles.forEach((serverProfile: ProfileItem) => {
-            const existingIndex = syncedProfiles.findIndex(p => p.id === serverProfile.id);
-            if (existingIndex >= 0) {
-              syncedProfiles[existingIndex] = serverProfile; // Update với data từ server
-            } else {
-              syncedProfiles.push(serverProfile); // Thêm mới
-            }
-          });
-          
-          localStorage.setItem('accsafe_profiles', JSON.stringify(syncedProfiles));
-        }
-      } catch (syncError) {
-        console.warn('[ProfileAPI] Error syncing with localStorage:', syncError);
-        // Không throw error, chỉ log warning
-      }
-      
-      return serverProfiles;
+      return data.profiles || [];
     } catch (error: any) {
-      // Nếu lỗi network hoặc endpoint không tồn tại, fallback về localStorage
-      if (error.message.includes('Failed to fetch') || error.message.includes('404')) {
-        console.warn('[ProfileAPI] API không khả dụng, sử dụng localStorage fallback');
-        return getProfilesLocalStorage();
-      }
       console.error('[ProfileAPI] Error fetching profiles:', error);
-      throw new Error(error.message || 'Không thể tải danh sách profiles');
+      // Không có fallback - phải kết nối được server
+      const errorMessage = error.message || 'Không thể tải danh sách profiles';
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('network')) {
+        throw new Error('Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng và đảm bảo server đang chạy.');
+      }
+      throw new Error(errorMessage);
     }
   },
 
@@ -403,13 +316,11 @@ export const profileAPI = {
       });
 
       if (!response.ok) {
-        // Nếu endpoint chưa tồn tại (404), fallback về localStorage
-        if (response.status === 404) {
-          console.warn('[ProfileAPI] Endpoint /api/profiles chưa được implement, sử dụng localStorage fallback');
-          return createProfileLocalStorage(profile);
-        }
         if (response.status === 401) {
           throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        }
+        if (response.status === 404) {
+          throw new Error('Server không hỗ trợ endpoint này. Vui lòng kiểm tra lại server.');
         }
         const errorData = await response.json().catch(() => ({}));
         console.error('[ProfileAPI] Error response:', { 
@@ -439,13 +350,13 @@ export const profileAPI = {
     } catch (error: any) {
       console.error('[ProfileAPI] Error creating profile:', error);
       
-      // Fallback về localStorage nếu server không khả dụng
-      if (error.message && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('ERR_CONNECTION') || error.message.includes('404'))) {
-        console.warn('[ProfileAPI] Server không khả dụng, sử dụng localStorage fallback');
-        return createProfileLocalStorage(profile);
+      // Không có fallback - phải kết nối được server
+      const errorMessage = error.message || 'Không thể tạo profile';
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('ERR_CONNECTION')) {
+        throw new Error('Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng và đảm bảo server đang chạy.');
       }
       
-      throw new Error(error.message || 'Không thể tạo profile');
+      throw new Error(errorMessage);
     }
   },
 
@@ -476,16 +387,14 @@ export const profileAPI = {
       });
 
       if (!response.ok) {
-        // Nếu endpoint chưa tồn tại (404), fallback về localStorage
-        if (response.status === 404) {
-          console.warn('[ProfileAPI] Endpoint /api/profiles/:id chưa được implement, sử dụng localStorage fallback');
-          return updateProfileLocalStorage(profileId, updates);
-        }
         if (response.status === 401) {
           throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
         }
         if (response.status === 403) {
           throw new Error('Bạn không có quyền cập nhật profile này');
+        }
+        if (response.status === 404) {
+          throw new Error('Server không hỗ trợ endpoint này hoặc profile không tồn tại.');
         }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `Lỗi khi cập nhật profile: ${response.status}`);
@@ -494,13 +403,13 @@ export const profileAPI = {
       const data = await response.json();
       return data.profile;
     } catch (error: any) {
-      // Nếu lỗi network hoặc endpoint không tồn tại, fallback về localStorage
-      if (error.message.includes('Failed to fetch') || error.message.includes('404')) {
-        console.warn('[ProfileAPI] API không khả dụng, sử dụng localStorage fallback');
-        return updateProfileLocalStorage(profileId, updates);
-      }
       console.error('[ProfileAPI] Error updating profile:', error);
-      throw new Error(error.message || 'Không thể cập nhật profile');
+      // Không có fallback - phải kết nối được server
+      const errorMessage = error.message || 'Không thể cập nhật profile';
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('network')) {
+        throw new Error('Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng và đảm bảo server đang chạy.');
+      }
+      throw new Error(errorMessage);
     }
   },
 
@@ -526,38 +435,29 @@ export const profileAPI = {
       });
 
       if (!response.ok) {
-        // Nếu endpoint chưa tồn tại (404), fallback về localStorage
-        if (response.status === 404) {
-          console.warn('[ProfileAPI] Endpoint /api/profiles/:id chưa được implement, sử dụng localStorage fallback');
-          deleteProfileLocalStorage(profileId);
-          return;
-        }
         if (response.status === 401) {
           throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
         }
         if (response.status === 403) {
           throw new Error('Bạn không có quyền xóa profile này');
         }
+        if (response.status === 404) {
+          throw new Error('Server không hỗ trợ endpoint này hoặc profile không tồn tại.');
+        }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `Lỗi khi xóa profile: ${response.status}`);
       }
 
-      // Xóa thành công từ server, cũng xóa khỏi localStorage để đồng bộ
-      try {
-        deleteProfileLocalStorage(profileId);
-      } catch (e) {
-        // Không quan trọng nếu xóa localStorage fail, vì đã xóa thành công trên server
-        console.warn('[ProfileAPI] Could not sync delete to localStorage:', e);
-      }
+      // Xóa thành công từ server
+      return;
     } catch (error: any) {
-      // Nếu lỗi network hoặc endpoint không tồn tại, fallback về localStorage
-      if (error.message.includes('Failed to fetch') || error.message.includes('404')) {
-        console.warn('[ProfileAPI] API không khả dụng, sử dụng localStorage fallback');
-        deleteProfileLocalStorage(profileId);
-        return;
-      }
       console.error('[ProfileAPI] Error deleting profile:', error);
-      throw new Error(error.message || 'Không thể xóa profile');
+      // Không có fallback - phải kết nối được server
+      const errorMessage = error.message || 'Không thể xóa profile';
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('network')) {
+        throw new Error('Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng và đảm bảo server đang chạy.');
+      }
+      throw new Error(errorMessage);
     }
   },
 };

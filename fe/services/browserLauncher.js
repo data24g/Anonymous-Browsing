@@ -55,7 +55,7 @@ const getProxyInfo = async (proxyUrl) => {
         const resp = await axios.get(api.url, { 
           httpAgent: httpAgent,
           httpsAgent: httpsAgent,
-          timeout: 15000 
+          timeout: 8000 // Giảm timeout từ 15s xuống 8s để tăng tốc độ
         });
         
         if (resp.status === 200) {
@@ -82,7 +82,7 @@ const getProxyInfo = async (proxyUrl) => {
         console.log(`    [WARN] Agent method failed, trying axios proxy option...`);
         const resp = await axios.get(api.url, { 
           proxy: proxies,
-          timeout: 15000 
+          timeout: 8000 // Giảm timeout từ 15s xuống 8s để tăng tốc độ
         });
         
         if (resp.status === 200) {
@@ -105,9 +105,25 @@ const getProxyInfo = async (proxyUrl) => {
         }
       }
     } catch (error) {
-      console.log(`    [ERR] ${error.message?.substring(0, 100)}...`);
-      if (error.code) {
-        console.log(`    [ERR] Error code: ${error.code}`);
+      const errorMsg = error.message || '';
+      const errorCode = error.code || '';
+      
+      // Log chi tiết lỗi
+      if (errorCode === 'ECONNREFUSED' || errorMsg.includes('ECONNREFUSED')) {
+        console.log(`    [ERR Check IP] connect ECONNREFUSED - Proxy không thể kết nối`);
+      } else if (errorCode === 'ETIMEDOUT' || errorMsg.includes('timeout')) {
+        console.log(`    [ERR Check IP] Timeout - Proxy không phản hồi`);
+      } else {
+        console.log(`    [ERR] ${errorMsg.substring(0, 100)}...`);
+      }
+      
+      if (errorCode) {
+        console.log(`    [ERR] Error code: ${errorCode}`);
+      }
+      
+      // Nếu là lỗi kết nối nghiêm trọng, throw ngay để fallback
+      if (errorCode === 'ECONNREFUSED' || errorCode === 'ETIMEDOUT' || errorCode === 'ENOTFOUND') {
+        throw error; // Throw để caller biết proxy không hoạt động
       }
     }
   }
@@ -128,7 +144,7 @@ const getDirectIPInfo = async () => {
 
   for (const api of apis) {
     try {
-      const resp = await axios.get(api.url, { timeout: 10000 });
+      const resp = await axios.get(api.url, { timeout: 5000 }); // Giảm timeout để tăng tốc độ
       if (resp.status === 200) {
         const data = resp.data;
         const ip = data.query || data.ip;
@@ -321,12 +337,17 @@ const findChromePath = () => {
   const platform = process.platform;
   
   if (platform === 'win32') {
-    // Ưu tiên RUYI Chrome build (giống test.py)
+    // Tìm Chrome executable - tự động detect
     const possiblePaths = [
-      'C:\\Users\\trung\\Downloads\\chrome\\Chrome-bin\\chrome.exe', // RUYI Chrome - ưu tiên
+      // RUYI Chrome (nếu có trong project)
+      path.join(__dirname, '../../Chrome-bin/chrome.exe'),
+      // Standard Chrome installations
       'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
       'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
       (process.env.LOCALAPPDATA || '') + '\\Google\\Chrome\\Application\\chrome.exe',
+      // User Downloads folder (common for RUYI Chrome)
+      path.join(process.env.USERPROFILE || '', 'Downloads/chrome/Chrome-bin/chrome.exe'),
+      path.join(process.env.USERPROFILE || '', 'Downloads/Chrome-bin/chrome.exe'),
     ];
     
     for (const chromePath of possiblePaths) {
@@ -522,26 +543,58 @@ const launchBrowser = async (profile, proxy, urlToOpen = 'https://whoer.net') =>
         url: proxyConfig.url.substring(0, 50) + '...'
       });
       
-      const proxyInfo = await getProxyInfo(proxyConfig.url);
-      console.log('[DEBUG] Proxy info result:', proxyInfo);
+      // Kiểm tra proxy với timeout ngắn hơn để tăng tốc độ
+      let proxyInfo;
+      let proxyWorking = false;
       
-      if (!proxyInfo.ip) {
-        console.warn('[!!!] PROXY CHẾT HOẶC KHÔNG KẾT NỐI ĐƯỢC INTERNET [!!!]');
-        proxyIP = '127.0.0.1';
-        timezone = proxyInfo.timezone || 'Asia/Ho_Chi_Minh';
-      } else {
-        proxyIP = proxyInfo.ip;
-        timezone = proxyInfo.timezone;
-        console.log(`[OK] Proxy Sống. Cấu hình Browser theo IP: ${proxyIP} | Location: ${proxyInfo.location || 'Unknown'}`);
+      try {
+        console.log('[DEBUG] Checking proxy connectivity...');
+        // Timeout ngắn hơn (5s thay vì 10s) để tăng tốc độ load
+        proxyInfo = await Promise.race([
+          getProxyInfo(proxyConfig.url),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Proxy check timeout after 5s')), 5000)
+          )
+        ]);
+        
+        if (proxyInfo && proxyInfo.ip) {
+          proxyWorking = true;
+          proxyIP = proxyInfo.ip;
+          timezone = proxyInfo.timezone;
+          console.log(`[OK] Proxy hoạt động. IP: ${proxyIP} | Location: ${proxyInfo.location || 'Unknown'}`);
+        } else {
+          throw new Error('Proxy không trả về IP hợp lệ');
+        }
+      } catch (error) {
+        console.error(`[ERR Check IP] ${error.message || error.code || 'Unknown error'}`);
+        console.warn('[!!!] Proxy timeout/lỗi, sử dụng kết nối trực tiếp...');
+        
+        // Fallback: dùng direct connection
+        const directInfo = await getDirectIPInfo();
+        proxyIP = directInfo.ip;
+        timezone = directInfo.timezone;
+        proxyExtensionPath = null;
+        proxy = null; // Disable proxy hoàn toàn để browser không dùng proxy
+        console.warn('[!!!] Đã tắt proxy do lỗi kết nối. Browser sẽ dùng kết nối trực tiếp.');
       }
       
-      // Tạo extension để xử lý proxy auth
-      proxyExtensionPath = createProxyAuthExtension(
-        proxyConfig.ip,
-        proxyConfig.port,
-        proxyConfig.username,
-        proxyConfig.password
-      );
+      // Chỉ tạo extension nếu proxy hoạt động
+      if (proxyWorking && proxy) {
+        try {
+          proxyExtensionPath = createProxyAuthExtension(
+            proxyConfig.ip,
+            proxyConfig.port,
+            proxyConfig.username,
+            proxyConfig.password
+          );
+          console.log('[OK] Proxy extension đã được tạo');
+        } catch (error) {
+          console.error(`[ERROR] Failed to create proxy extension: ${error.message}`);
+          proxyExtensionPath = null;
+          proxy = null; // Disable proxy nếu không tạo được extension
+          console.warn('[!!!] Đã tắt proxy do lỗi tạo extension. Browser sẽ dùng kết nối trực tiếp.');
+        }
+      }
     } else {
       const directInfo = await getDirectIPInfo();
       proxyIP = directInfo.ip;
@@ -584,47 +637,106 @@ const launchBrowser = async (profile, proxy, urlToOpen = 'https://whoer.net') =>
     }
 
     // 4. Build launch args (giống test.py - EXACT MATCH)
+    // Tối ưu tốc độ load: Thêm các flags để tăng tốc độ
     const launchArgs = [
       `--ruyi=${ruyiConfigJson}`, // QUAN TRỌNG: RUYI config phải ở đầu tiên
       '--no-first-run',
       '--disable-infobars',
+      
+      // Tối ưu Network & DNS - Tăng tốc độ load
       '--disable-features=DnsOverHttps',
       '--disable-async-dns',
+      '--disable-background-networking',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      '--disable-ipc-flooding-protection',
+      
+      // Tắt prefetch/preload để tăng tốc độ khởi động
+      '--disable-preconnect',
+      '--disable-preload',
+      '--disable-prefetch',
+      '--disable-hang-monitor',
+      
+      // Tối ưu Rendering - Tăng tốc độ render (giữ GPU để fingerprinting tốt hơn)
+      '--disable-gpu-vsync',
+      '--disable-software-rasterizer',
+      '--disable-extensions-file-access-check',
+      '--disable-extensions-http-throttling',
+      '--enable-features=VaapiVideoDecoder', // Tăng tốc decode video nếu có GPU
+      
+      // Tắt các tính năng không cần thiết - Giảm overhead
+      '--disable-plugins-discovery',
+      '--disable-plugins',
+      '--disable-default-apps',
+      '--disable-session-crashed-bubble',
+      '--disable-translate',
+      '--disable-features=TranslateUI',
+      '--disable-features=AutofillServerCommunication',
+      '--disable-features=MediaRouter',
+      '--disable-features=RendererCodeIntegrity',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--disable-features=AudioServiceOutOfProcess',
+      
       // WebRTC flags để prevent IP leak
       '--force-webrtc-ip-handling-policy=default_public_interface_only',
       '--webrtc-ip-handling-policy=default_public_interface_only',
+      
+      // Memory & Performance
       `--device-memory=${profile.hardware.ram}`,
+      '--memory-pressure-off',
+      '--max_old_space_size=4096',
+      
+      // Bypass browser detection
       '--disable-blink-features=AutomationControlled',
+      '--exclude-switches=enable-automation',
+      '--disable-blink-features=AutomationControlled',
+      
+      // Language & Timezone
       '--lang=en-US',
       `--timezone-override=${timezone}`,
       `--user-data-dir=${userDataDir}`,
-      // Flags để bypass browser detection
-      '--disable-features=IsolateOrigins,site-per-process',
+      
+      // Update & Sync - Tắt để tăng tốc
       '--disable-component-update', // Fix "Update your browser" warning
-      '--disable-background-networking',
       '--disable-sync',
+      '--disable-background-downloads',
+      
       // SSL flags (không dùng --disable-web-security vì gây warning)
       '--ignore-certificate-errors',
       '--ignore-ssl-errors',
       '--ignore-certificate-errors-spki-list',
+      '--ignore-certificate-errors-spki-list',
+      
+      // Tối ưu thêm
+      '--no-pings',
+      '--no-sandbox', // Tăng tốc nhưng giảm security (OK cho automation)
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage', // Giảm memory usage
+      '--disable-accelerated-2d-canvas',
+      '--disable-accelerated-video-decode',
     ];
     
     console.log('[DEBUG] Launch args count:', launchArgs.length);
     console.log('[DEBUG] RUYI flag length:', `--ruyi=${ruyiConfigJson}`.length);
     console.log('[DEBUG] RUYI flag preview:', `--ruyi=${ruyiConfigJson.substring(0, 100)}...`);
 
-    // 5. Add proxy extension nếu có proxy với auth
-    if (proxyExtensionPath) {
+    // 5. Add proxy extension nếu có proxy với auth và proxy đang hoạt động
+    if (proxy && proxyExtensionPath) {
       console.log(`[DEBUG] Loading proxy extension from: ${proxyExtensionPath}`);
       launchArgs.push(`--load-extension=${proxyExtensionPath}`);
-      console.log(`[DEBUG] Proxy extension will handle: ${parseProxyConfig(proxy)?.server}`);
-    } else if (proxy) {
-      // Fallback: dùng --proxy-server nếu proxy không có auth
+      const proxyConfig = parseProxyConfig(proxy);
+      console.log(`[DEBUG] Proxy extension will handle: ${proxyConfig?.server || 'N/A'}`);
+    } else if (proxy && !proxyExtensionPath) {
+      // Fallback: dùng --proxy-server nếu proxy không có auth và proxy đang hoạt động
       const proxyConfig = parseProxyConfig(proxy);
       if (proxyConfig && (!proxyConfig.username || !proxyConfig.password)) {
         console.log(`[DEBUG] Using --proxy-server: ${proxyConfig.server}`);
         launchArgs.push(`--proxy-server=${proxyConfig.server}`);
       }
+    } else {
+      // Không có proxy hoặc proxy đã bị disable
+      console.log('[DEBUG] Không sử dụng proxy - kết nối trực tiếp');
     }
 
     // 6. Add URL to open

@@ -132,6 +132,29 @@ const authenticate = (req, res, next) => {
 
 // --- API ROUTES ---
 
+// Health Check Endpoint - để kiểm tra server có đang chạy không
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    message: "Server is running",
+    timestamp: new Date().toISOString(),
+    port: PORT,
+  });
+});
+
+// Root endpoint
+app.get("/", (req, res) => {
+  res.json({
+    message: "AccSafe API Server",
+    version: "1.0.0",
+    endpoints: {
+      health: "/api/health",
+      register: "POST /api/auth/register",
+      login: "POST /api/auth/login",
+    },
+  });
+});
+
 // 0. API DEBUG: Xem tất cả users (ĐÃ BẢO MẬT)
 // Cách dùng: http://IP:3000/api/users?key=AccsafeSecret2024
 app.get("/api/users", (req, res) => {
@@ -537,11 +560,16 @@ app.delete("/api/proxies/:id", authenticate, (req, res) => {
 });
 
 // Khởi chạy Server
-app.listen(PORT, () => {
+// Listen trên 0.0.0.0 để có thể kết nối từ bên ngoài (không chỉ localhost)
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`=============================================`);
   console.log(`   SERVER ĐANG CHẠY TẠI PORT ${PORT}`);
+  console.log(`   Listen trên: 0.0.0.0:${PORT} (có thể truy cập từ bên ngoài)`);
+  console.log(`   Local: http://localhost:${PORT}`);
+  console.log(`   Network: http://0.0.0.0:${PORT}`);
   console.log(`   Users: ${DB_FILE}`);
   console.log(`   Profiles: ${PROFILES_FILE}`);
   console.log(`   Proxies: ${PROXIES_FILE}`);
+  console.log(`   Health Check: http://0.0.0.0:${PORT}/api/health`);
   console.log(`=============================================`);
 });

@@ -20,18 +20,40 @@ const defaultConfig: ApiConfig = {
 
 /**
  * Lấy cấu hình API từ localStorage hoặc dùng mặc định
+ * Mặc định luôn dùng remote server (production)
+ * Force remote server - không cho phép dùng localhost
  */
 export const getApiConfig = (): ApiConfig => {
   try {
     const savedConfig = localStorage.getItem("api_config");
     if (savedConfig) {
       const parsed = JSON.parse(savedConfig);
-      return { ...defaultConfig, ...parsed };
+      const config = { ...defaultConfig, ...parsed };
+      // Force luôn dùng remote server - không cho phép localhost
+      if (config.useLocalServer) {
+        console.log("[ApiConfig] Forcing remote server - disabling localhost");
+        config.useLocalServer = false;
+        // Lưu lại config đã sửa
+        localStorage.setItem("api_config", JSON.stringify(config));
+      }
+      return config;
     }
   } catch (error) {
     console.error("[ApiConfig] Error loading config:", error);
   }
   return defaultConfig;
+};
+
+/**
+ * Reset cấu hình về mặc định (dùng remote server)
+ */
+export const resetApiConfig = (): void => {
+  try {
+    localStorage.removeItem("api_config");
+    console.log("[ApiConfig] Config reset to default (remote server)");
+  } catch (error) {
+    console.error("[ApiConfig] Error resetting config:", error);
+  }
 };
 
 /**
@@ -49,11 +71,17 @@ export const saveApiConfig = (config: Partial<ApiConfig>): void => {
 };
 
 /**
- * Lấy API URL hiện tại dựa trên cấu hình
+ * Lấy API URL hiện tại - luôn trả về remote server
+ * Không cho phép dùng localhost
  */
 export const getApiUrl = (): string => {
   const config = getApiConfig();
-  return config.useLocalServer ? config.localUrl : config.remoteUrl;
+  // Force luôn dùng remote server
+  if (config.useLocalServer) {
+    console.warn("[ApiConfig] getApiUrl: Forcing remote server usage");
+    saveApiConfig({ useLocalServer: false });
+  }
+  return config.remoteUrl;
 };
 
 /**
@@ -90,40 +118,18 @@ export const checkServerHealth = async (url?: string): Promise<boolean> => {
 };
 
 /**
- * Tự động chuyển đổi giữa local và remote nếu một trong hai không khả dụng
- * Ưu tiên local server nếu nó available
+ * Lấy API URL - chỉ dùng remote server (không fallback về localhost)
+ * Dùng cho các API khác ngoài auth (profile, proxy, etc.)
  */
 export const getAvailableApiUrl = async (): Promise<string> => {
   const config = getApiConfig();
-
-  // Luôn ưu tiên kiểm tra local server trước (nhanh hơn và đáng tin cậy hơn khi dev)
-  const localHealth = await checkServerHealth(
-    config.localUrl.replace("/api", "/api/health")
-  );
-  if (localHealth) {
-    if (!config.useLocalServer) {
-      console.log("[ApiConfig] Local server is available, switching to local");
-      saveApiConfig({ useLocalServer: true });
-    }
-    return config.localUrl;
+  
+  // Chỉ trả về remote server, không fallback về localhost
+  // Đảm bảo config luôn dùng remote server
+  if (config.useLocalServer) {
+    console.log("[ApiConfig] Forcing remote server usage");
+    saveApiConfig({ useLocalServer: false });
   }
-
-  // Nếu local không available, kiểm tra remote
-  const remoteHealth = await checkServerHealth(
-    config.remoteUrl.replace("/api", "/api/health")
-  );
-  if (remoteHealth) {
-    if (config.useLocalServer) {
-      console.warn("[ApiConfig] Local server unavailable, switching to remote");
-      saveApiConfig({ useLocalServer: false });
-    }
-    return config.remoteUrl;
-  }
-
-  // Cả hai đều không khả dụng, nhưng vẫn trả về local server (ưu tiên cho dev)
-  // Health check có thể fail do network timeout, nhưng server vẫn có thể hoạt động
-  console.warn(
-    "[ApiConfig] Both servers health check failed, but will try to connect anyway (preferring local)"
-  );
-  return config.localUrl;
+  
+  return config.remoteUrl;
 };

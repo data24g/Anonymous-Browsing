@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Globe, Moon, Sun, Eye, EyeOff, Server } from 'lucide-react';
+import React, { useState } from 'react';
+import { Globe, Moon, Sun, Eye, EyeOff } from 'lucide-react';
 import { Button, Input } from '../components/UIComponents';
 import { AppConfig } from '../types';
-import { getApiConfig, saveApiConfig, checkServerHealth, getApiUrl } from '../config/api.config';
 
 interface SettingsViewProps {
   t: any;
@@ -15,27 +14,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ t, config, setConfig
   const [passForm, setPassForm] = useState({ old: '', new: '', error: '' });
   const [showOldPass, setShowOldPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
-  
-  // API Config state
-  const [apiConfig, setApiConfig] = useState(getApiConfig());
-  const [serverStatus, setServerStatus] = useState({ local: false, remote: false });
-  
-  // Load server health status
-  useEffect(() => {
-    const checkStatus = async () => {
-      const localHealth = await checkServerHealth('http://localhost:3000/api/health');
-      const remoteHealth = await checkServerHealth('http://163.44.193.71:3000/api/health');
-      setServerStatus({ local: localHealth, remote: remoteHealth });
-    };
-    checkStatus();
-    const interval = setInterval(checkStatus, 10000); // Check every 10 seconds
-    return () => clearInterval(interval);
-  }, []);
-  
-  // Update apiConfig when it changes
-  useEffect(() => {
-    setApiConfig(getApiConfig());
-  }, []);
 
   const handleChangePassword = () => {
       if (passForm.old !== '123456' && passForm.old !== '') { 
@@ -115,42 +93,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ t, config, setConfig
             />
             <div className="flex justify-end mt-2">
                <Button onClick={handleChangePassword}>{t.save}</Button>
-            </div>
-         </div>
-      </div>
-
-      {/* API Configuration */}
-      <div className="bg-white dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-         <div className="flex items-center gap-2 mb-4">
-            <Server className="text-slate-400" />
-            <h3 className="text-lg font-semibold">Cấu hình Server API</h3>
-         </div>
-         <div className="space-y-4">
-            <div className="flex items-center justify-between py-2">
-               <span className="text-sm text-slate-600 dark:text-slate-400">Sử dụng Local Server</span>
-               <button 
-                 onClick={() => {
-                   const newConfig = { ...apiConfig, useLocalServer: !apiConfig.useLocalServer };
-                   setApiConfig(newConfig);
-                   saveApiConfig(newConfig);
-                   notify('Đã cập nhật cấu hình server', 'success');
-                 }}
-                 className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ${apiConfig.useLocalServer ? 'bg-blue-600' : 'bg-slate-300'}`}
-               >
-                 <div className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform duration-200 ${apiConfig.useLocalServer ? 'translate-x-6' : 'translate-x-0'}`} />
-               </button>
-            </div>
-            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-               <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">Server hiện tại:</div>
-               <div className="text-sm font-mono">{getApiUrl()}</div>
-            </div>
-            <div className="flex gap-2 text-xs">
-               <div className={`px-2 py-1 rounded ${serverStatus.local ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'}`}>
-                  Local: {serverStatus.local ? '✓' : '✗'}
-               </div>
-               <div className={`px-2 py-1 rounded ${serverStatus.remote ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'}`}>
-                  Remote: {serverStatus.remote ? '✓' : '✗'}
-               </div>
             </div>
          </div>
       </div>

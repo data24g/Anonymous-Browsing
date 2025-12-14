@@ -274,7 +274,11 @@ export default function App() {
                 />
               )}
               {currentView === "automation" && (
-                <AutomationView notify={notify} />
+                <AutomationView 
+                  notify={notify} 
+                  profiles={profiles}
+                  proxies={proxies}
+                />
               )}
               {currentView === "support" && <SupportView t={t} />}
               {currentView === "settings" && (

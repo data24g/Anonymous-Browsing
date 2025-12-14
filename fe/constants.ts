@@ -10,10 +10,43 @@ export const SOCIAL_LINKS = [
 ];
 
 export const AUTOMATION_SCRIPTS = [
-  { id: 'fb-login', name: 'Facebook Login', url: 'https://facebook.com', icon: 'Facebook' },
-  { id: 'amz-surf', name: 'Amazon Surfing', url: 'https://amazon.com', icon: 'ShoppingBag' },
-  { id: 'google-farm', name: 'Google Farming', url: 'https://google.com', icon: 'Chrome' },
-  { id: 'yt-watch', name: 'YouTube Watch', url: 'https://youtube.com', icon: 'Youtube' },
+  // Social Media
+  { id: 'fb-login', name: 'Facebook', url: 'https://facebook.com', icon: 'Facebook', category: 'Social' },
+  { id: 'instagram', name: 'Instagram', url: 'https://instagram.com', icon: 'Instagram', category: 'Social' },
+  { id: 'twitter', name: 'Twitter/X', url: 'https://twitter.com', icon: 'Twitter', category: 'Social' },
+  { id: 'linkedin', name: 'LinkedIn', url: 'https://linkedin.com', icon: 'LinkedIn', category: 'Social' },
+  { id: 'tiktok', name: 'TikTok', url: 'https://tiktok.com', icon: 'TikTok', category: 'Social' },
+  { id: 'reddit', name: 'Reddit', url: 'https://reddit.com', icon: 'Reddit', category: 'Social' },
+  
+  // E-commerce
+  { id: 'amz-surf', name: 'Amazon', url: 'https://amazon.com', icon: 'ShoppingBag', category: 'Shopping' },
+  { id: 'ebay', name: 'eBay', url: 'https://ebay.com', icon: 'ShoppingBag', category: 'Shopping' },
+  { id: 'shopify', name: 'Shopify', url: 'https://shopify.com', icon: 'ShoppingBag', category: 'Shopping' },
+  { id: 'aliexpress', name: 'AliExpress', url: 'https://aliexpress.com', icon: 'ShoppingBag', category: 'Shopping' },
+  
+  // Search & Tools
+  { id: 'google-farm', name: 'Google', url: 'https://google.com', icon: 'Chrome', category: 'Search' },
+  { id: 'bing', name: 'Bing', url: 'https://bing.com', icon: 'Chrome', category: 'Search' },
+  { id: 'duckduckgo', name: 'DuckDuckGo', url: 'https://duckduckgo.com', icon: 'Chrome', category: 'Search' },
+  
+  // Entertainment
+  { id: 'yt-watch', name: 'YouTube', url: 'https://youtube.com', icon: 'Youtube', category: 'Entertainment' },
+  { id: 'netflix', name: 'Netflix', url: 'https://netflix.com', icon: 'Youtube', category: 'Entertainment' },
+  { id: 'spotify', name: 'Spotify', url: 'https://spotify.com', icon: 'Youtube', category: 'Entertainment' },
+  { id: 'twitch', name: 'Twitch', url: 'https://twitch.tv', icon: 'Youtube', category: 'Entertainment' },
+  
+  // News & Media
+  { id: 'cnn', name: 'CNN', url: 'https://cnn.com', icon: 'Chrome', category: 'News' },
+  { id: 'bbc', name: 'BBC', url: 'https://bbc.com', icon: 'Chrome', category: 'News' },
+  { id: 'nytimes', name: 'New York Times', url: 'https://nytimes.com', icon: 'Chrome', category: 'News' },
+  
+  // Banking & Finance
+  { id: 'paypal', name: 'PayPal', url: 'https://paypal.com', icon: 'ShoppingBag', category: 'Finance' },
+  { id: 'stripe', name: 'Stripe', url: 'https://stripe.com', icon: 'ShoppingBag', category: 'Finance' },
+  
+  // Development
+  { id: 'github', name: 'GitHub', url: 'https://github.com', icon: 'Chrome', category: 'Dev' },
+  { id: 'stackoverflow', name: 'Stack Overflow', url: 'https://stackoverflow.com', icon: 'Chrome', category: 'Dev' },
 ];
 
 export const CPU_OPTIONS = [2, 4, 8, 16, 32];
