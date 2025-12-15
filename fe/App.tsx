@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import {
   User as UserIcon,
   Server,
@@ -20,16 +20,26 @@ import { useLocalStorage } from "./hooks/useLocalStorage";
 import { Toast, Button, Modal } from "./components/UIComponents";
 import { Sidebar } from "./components/Sidebar";
 import { ChatWidget } from "./components/ChatWidget";
-import { TitleBar } from "./components/TitleBar"; // Import TitleBar
+import { TitleBar } from "./components/TitleBar";
 import { AuthView } from "./views/AuthView";
-import { ProfileView } from "./views/ProfileView";
-import { ProxyView } from "./views/ProxyView";
-import { AutomationView } from "./views/AutomationView";
-import { SupportView } from "./views/SupportView";
-import { SettingsView } from "./views/SettingsView";
-import { AdminChatView } from "./views/AdminChatView";
-import { profileAPI, proxyAPI } from "./services/api";
+import { profileAPI, proxyAPI, chatAPI, userAPI } from "./services/api";
 import { checkProxyLocation } from "./services/proxyLocationChecker";
+
+// Lazy load các view components để giảm bundle size ban đầu
+const ProfileView = lazy(() => import("./views/ProfileView").then(m => ({ default: m.ProfileView })));
+const ProxyView = lazy(() => import("./views/ProxyView").then(m => ({ default: m.ProxyView })));
+const AutomationView = lazy(() => import("./views/AutomationView").then(m => ({ default: m.AutomationView })));
+const SupportView = lazy(() => import("./views/SupportView").then(m => ({ default: m.SupportView })));
+const SettingsView = lazy(() => import("./views/SettingsView").then(m => ({ default: m.SettingsView })));
+const AdminChatView = lazy(() => import("./views/AdminChatView").then(m => ({ default: m.AdminChatView })));
+const AdminUsersView = lazy(() => import("./views/AdminUsersView").then(m => ({ default: m.AdminUsersView })));
+
+// Loading component
+const ViewLoader = () => (
+  <div className="flex items-center justify-center h-full">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+  </div>
+);
 
 export default function App() {
   // --- Global State ---
@@ -47,10 +57,8 @@ export default function App() {
   const [profiles, setProfiles] = useState<ProfileItem[]>([]);
   const [proxies, setProxies] = useState<ProxyItem[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
-  const [chatSessions, setChatSessions] = useLocalStorage<ChatSession[]>(
-    "accsafe_chats",
-    []
-  );
+  // Chat sessions sẽ được load từ API, không dùng localStorage nữa
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
 
   // --- UI State ---
   const [currentView, setCurrentView] = useState<View>("auth");
@@ -65,24 +73,53 @@ export default function App() {
   const [selectedChatUser, setSelectedChatUser] = useState<string | null>(null);
 
   // --- Effects ---
-  // Load Profiles và Proxies từ API khi user login
+  // Load Profiles, Proxies và Chat Sessions từ API khi user login
   useEffect(() => {
     if (currentUser && currentUser.isLoggedIn) {
       setIsLoadingData(true);
       
-      // Load profiles và proxies song song
-      Promise.all([
-        profileAPI.getProfiles().catch((error) => {
-          console.error('[App] Error loading profiles:', error);
-          notify(error.message || t.cannotLoadProfiles, 'error');
-          return [];
-        }),
-        proxyAPI.getProxies().catch((error) => {
-          console.error('[App] Error loading proxies:', error);
-          notify(error.message || t.cannotLoadProxies, 'error');
-          return [];
-        }),
-      ]).then(async ([loadedProfiles, loadedProxies]) => {
+      // Load data trong async function
+      (async () => {
+        // Load profiles và proxies song song
+        const [loadedProfiles, loadedProxies] = await Promise.all([
+          profileAPI.getProfiles().catch((error) => {
+            console.error('[App] Error loading profiles:', error);
+            notify(error.message || (t as any).cannotLoadProfiles || 'Không thể tải profiles', 'error');
+            return [];
+          }),
+          proxyAPI.getProxies().catch((error) => {
+            console.error('[App] Error loading proxies:', error);
+            notify(error.message || (t as any).cannotLoadProxies || 'Không thể tải proxies', 'error');
+            return [];
+          }),
+        ]);
+
+        // Load chat sessions riêng
+        let loadedChatSessions: ChatSession[] = [];
+        if (currentUser.isAdmin) {
+          // Admin: Load tất cả chat sessions
+          loadedChatSessions = await chatAPI.getAllChatSessions().catch((error) => {
+            console.error('[App] Error loading chat sessions:', error);
+            return [];
+          });
+        } else {
+          // User thường: Load chat session của chính họ
+          try {
+            const session = await chatAPI.getChatSession(currentUser.email);
+            loadedChatSessions = [session];
+          } catch (error) {
+            console.error('[App] Error loading user chat session:', error);
+            // Nếu chưa có session hoặc lỗi, trả về session rỗng trong array
+            loadedChatSessions = [{
+              userId: currentUser.email,
+              userEmail: currentUser.email,
+              messages: [],
+              lastUpdated: Date.now(),
+            }];
+          }
+        }
+
+        // Process loaded data
         // Normalize profiles: đảm bảo tất cả profile đều có hardware
         // Và reset tất cả status về "stopped" khi app mở lại (vì processes đã bị kill khi app tắt)
         const normalizedProfiles = loadedProfiles.map(profile => {
@@ -111,15 +148,30 @@ export default function App() {
           return normalized;
         });
         setProfiles(normalizedProfiles);
-        setProxies(loadedProxies);
+        // Giữ nguyên status từ server (không reset về checking)
+        // Chỉ normalize để đảm bảo có đầy đủ fields
+        const normalizedProxies = loadedProxies.map(proxy => ({
+          ...proxy,
+          status: proxy.status || 'unknown', // Giữ nguyên status từ server
+          location: proxy.location || 'Unknown'
+        }));
+        setProxies(normalizedProxies);
+        
+        // Load chat sessions
+        if (loadedChatSessions.length > 0) {
+          setChatSessions(loadedChatSessions);
+        }
+        
         setIsLoadingData(false);
 
         // Check location cho các proxy chưa có location (bất đồng bộ, không block UI)
-        loadedProxies.forEach(async (proxy) => {
+        // Chỉ check location, KHÔNG thay đổi status
+        normalizedProxies.forEach(async (proxy) => {
           if (!proxy.location || proxy.location === 'Unknown' || proxy.location === '-') {
             try {
               const locationResult = await checkProxyLocation(proxy);
               if (locationResult.location && locationResult.location !== 'Unknown') {
+                // Chỉ update location, giữ nguyên status
                 setProxies((prev) =>
                   prev.map((p) =>
                     p.id === proxy.id
@@ -127,13 +179,17 @@ export default function App() {
                       : p
                   )
                 );
+                // Update location lên server (không thay đổi status)
+                proxyAPI.updateProxy(proxy.id, { location: locationResult.location }).catch(err => {
+                  console.error(`[App] Error updating proxy location:`, err);
+                });
               }
             } catch (error) {
               console.error(`[App] Error checking location for proxy ${proxy.id}:`, error);
             }
           }
         });
-      });
+      })();
     } else {
       // Khi logout, clear data
       setProfiles([]);
@@ -153,18 +209,18 @@ export default function App() {
   }, [config.theme]);
 
   // --- Helpers ---
-  const t = TRANSLATIONS[config.language];
-  const notify = (message: string, type: "success" | "error" = "success") => {
+  const t = useMemo(() => TRANSLATIONS[config.language], [config.language]);
+  const notify = useCallback((message: string, type: "success" | "error" = "success") => {
     setNotification({ message, type });
-  };
+  }, []);
 
   // --- Handlers ---
-  const handleLoginSuccess = (user: User) => {
+  const handleLoginSuccess = useCallback((user: User) => {
     setCurrentUser(user);
     notify(t.success);
-  };
+  }, [notify, t.success]);
 
-  const confirmLogout = () => {
+  const confirmLogout = useCallback(() => {
     // Clear token khi logout
     localStorage.removeItem('auth_token');
     setCurrentUser(null);
@@ -174,7 +230,7 @@ export default function App() {
     setIsUserChatOpen(false);
     setIsLogoutModalOpen(false);
     notify(t.success);
-  };
+  }, [notify, t.success]);
 
   // --- Render Content Wrapper ---
   // Bọc toàn bộ app trong 1 div flex column để TitleBar luôn ở trên cùng
@@ -239,6 +295,11 @@ export default function App() {
                     <UserCog className="text-red-500" /> {t.adminPanel}
                   </>
                 )}
+                {currentView === "admin_users" && (
+                  <>
+                    <UserIcon className="text-blue-500" /> Quản Lý Người Dùng
+                  </>
+                )}
               </h1>
               <div className="flex items-center gap-4 text-sm text-slate-500">
                 {currentView === "profiles" && (
@@ -254,51 +315,59 @@ export default function App() {
 
             {/* View Content */}
             <div className="flex-1 overflow-auto p-6 custom-scrollbar relative">
-              {currentView === "profiles" && (
-                <ProfileView
-                  t={t}
-                  profiles={profiles}
-                  proxies={proxies}
-                  setProfiles={setProfiles}
-                  notify={notify}
-                  currentUser={currentUser}
-                />
-              )}
-              {currentView === "proxies" && (
-                <ProxyView
-                  t={t}
-                  proxies={proxies}
-                  setProxies={setProxies}
-                  notify={notify}
-                  currentUser={currentUser}
-                />
-              )}
-              {currentView === "automation" && (
-                <AutomationView 
-                  notify={notify} 
-                  profiles={profiles}
-                  proxies={proxies}
-                />
-              )}
-              {currentView === "support" && <SupportView t={t} />}
-              {currentView === "settings" && (
-                <SettingsView
-                  t={t}
-                  config={config}
-                  setConfig={setConfig}
-                  notify={notify}
-                />
-              )}
-              {currentView === "admin_chat" && (
-                <AdminChatView
-                  t={t}
-                  chatSessions={chatSessions}
-                  setChatSessions={setChatSessions}
-                  selectedChatUser={selectedChatUser}
-                  setSelectedChatUser={setSelectedChatUser}
-                  notify={notify}
-                />
-              )}
+              <Suspense fallback={<ViewLoader />}>
+                {currentView === "profiles" && (
+                  <ProfileView
+                    t={t}
+                    profiles={profiles}
+                    proxies={proxies}
+                    setProfiles={setProfiles}
+                    notify={notify}
+                    currentUser={currentUser}
+                  />
+                )}
+                {currentView === "proxies" && (
+                  <ProxyView
+                    t={t}
+                    proxies={proxies}
+                    setProxies={setProxies}
+                    notify={notify}
+                    currentUser={currentUser}
+                  />
+                )}
+                {currentView === "automation" && (
+                  <AutomationView 
+                    notify={notify} 
+                    profiles={profiles}
+                    proxies={proxies}
+                  />
+                )}
+                {currentView === "support" && <SupportView t={t} />}
+                {currentView === "settings" && (
+                  <SettingsView
+                    t={t}
+                    config={config}
+                    setConfig={setConfig}
+                    notify={notify}
+                  />
+                )}
+                {currentView === "admin_chat" && (
+                  <AdminChatView
+                    t={t}
+                    chatSessions={chatSessions}
+                    setChatSessions={setChatSessions}
+                    selectedChatUser={selectedChatUser}
+                    setSelectedChatUser={setSelectedChatUser}
+                    notify={notify}
+                  />
+                )}
+                {currentView === "admin_users" && (
+                  <AdminUsersView
+                    t={t}
+                    notify={notify}
+                  />
+                )}
+              </Suspense>
             </div>
 
             {/* User Chat Widget */}

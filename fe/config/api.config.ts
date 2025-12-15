@@ -123,13 +123,13 @@ export const checkServerHealth = async (url?: string): Promise<boolean> => {
  */
 export const getAvailableApiUrl = async (): Promise<string> => {
   const config = getApiConfig();
-  
+
   // Chỉ trả về remote server, không fallback về localhost
   // Đảm bảo config luôn dùng remote server
   if (config.useLocalServer) {
     console.log("[ApiConfig] Forcing remote server usage");
     saveApiConfig({ useLocalServer: false });
   }
-  
+
   return config.remoteUrl;
 };

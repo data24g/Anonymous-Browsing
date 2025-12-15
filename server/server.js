@@ -167,27 +167,180 @@ const authenticate = authMiddleware;
 
 // --- API ROUTES ---
 
-// 0. API DEBUG: Xem tất cả users (ĐÃ BẢO MẬT)
-// Cách dùng: http://IP:3000/api/users?key=AccsafeSecret2024
-app.get("/api/users", (req, res) => {
-  const secretKey = req.query.key;
-
-  // Chỉ cho phép xem nếu nhập đúng mã bí mật
-  if (secretKey !== "AccsafeSecret2024") {
-    return res
-      .status(403)
-      .json({ message: "Bạn không có quyền truy cập danh sách này!" });
+// Helper function để check admin role
+const checkAdmin = (req) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log(`[checkAdmin] No authorization header`);
+      return false;
+    }
+    
+    // Extract email từ token (format: fake-jwt-{timestamp}-{email})
+    const token = authHeader.replace("Bearer ", "");
+    console.log(`[checkAdmin] Token: ${token.substring(0, 50)}...`);
+    
+    // Token format: fake-jwt-{timestamp}-{email}
+    // Ví dụ: fake-jwt-1234567890-admin@gmail.com
+    // Split sẽ tạo: ["fake", "jwt", "1234567890", "admin@gmail.com"]
+    const parts = token.split("-");
+    console.log(`[checkAdmin] Token parts:`, parts);
+    
+    if (parts.length < 4) {
+      console.log(`[checkAdmin] Token format invalid, parts.length: ${parts.length}, expected at least 4`);
+      return false;
+    }
+    
+    // Lấy email từ phần tử thứ 3 trở đi (join lại vì email có thể có dấu -)
+    const email = parts.slice(3).join("-");
+    console.log(`[checkAdmin] Extracted email: ${email}`);
+    
+    const users = readDatabase();
+    console.log(`[checkAdmin] Total users in database: ${users.length}`);
+    
+    const user = users.find((u) => u.email === email);
+    
+    if (!user) {
+      console.log(`[checkAdmin] User not found: ${email}`);
+      console.log(`[checkAdmin] Available emails:`, users.map(u => u.email));
+      return false;
+    }
+    
+    console.log(`[checkAdmin] User found: ${email}, role: ${user.role || 'undefined'}`);
+    const isAdmin = user && (user.role === "admin" || user.role === "Admin");
+    console.log(`[checkAdmin] Is admin: ${isAdmin}`);
+    
+    return isAdmin;
+  } catch (error) {
+    console.error(`[checkAdmin] Error:`, error);
+    return false;
   }
+};
 
-  const users = readDatabase();
-  // Ẩn mật khẩu khi trả về
-  const safeUsers = users.map((u) => ({
-    email: u.email,
-    name: u.name,
-    role: u.role,
-    createdAt: u.createdAt,
-  }));
-  res.json(safeUsers);
+// GET /api/users - Lấy danh sách users (chỉ admin)
+app.get("/api/users", authenticate, (req, res) => {
+  try {
+    console.log(`[Users] GET request received`);
+    console.log(`[Users] Authorization header: ${req.headers.authorization ? 'Present' : 'Missing'}`);
+    
+    // Kiểm tra quyền admin
+    const isAdmin = checkAdmin(req);
+    console.log(`[Users] checkAdmin result: ${isAdmin}`);
+    
+    if (!isAdmin) {
+      console.log(`[Users] Access denied - not admin`);
+      return res.status(403).json({
+        error: "Forbidden",
+        message: "Chỉ admin mới có quyền xem danh sách users",
+      });
+    }
+
+    const users = readDatabase();
+    console.log(`[Users] Total users in database: ${users.length}`);
+    
+    // Ẩn mật khẩu khi trả về
+    const safeUsers = users.map((u) => ({
+      email: u.email,
+      name: u.name,
+      role: u.role || 'user', // Default to 'user' if role is missing
+      createdAt: u.createdAt,
+    }));
+    
+    console.log(`[Users] GET request from admin - returning ${safeUsers.length} users`);
+    res.json({ users: safeUsers });
+  } catch (error) {
+    console.error("[Users] Get error:", error);
+    res.status(500).json({
+      error: "Internal Server Error",
+      message: "Không thể lấy danh sách users",
+    });
+  }
+});
+
+// DELETE /api/users/:email - Xóa user (chỉ admin)
+app.delete("/api/users/:email", authenticate, (req, res) => {
+  try {
+    // Kiểm tra quyền admin
+    if (!checkAdmin(req)) {
+      return res.status(403).json({
+        error: "Forbidden",
+        message: "Chỉ admin mới có quyền xóa users",
+      });
+    }
+
+    const { email } = req.params;
+    const users = readDatabase();
+    
+    // Không cho phép xóa admin
+    const userToDelete = users.find((u) => u.email === email);
+    if (!userToDelete) {
+      return res.status(404).json({
+        error: "Not Found",
+        message: "Không tìm thấy user",
+      });
+    }
+    
+    if (userToDelete.role === "admin") {
+      return res.status(400).json({
+        error: "Bad Request",
+        message: "Không thể xóa tài khoản admin",
+      });
+    }
+
+    // Xóa user
+    const filteredUsers = users.filter((u) => u.email !== email);
+    
+    // Xóa tất cả profiles của user này
+    const profiles = readProfiles();
+    const filteredProfiles = profiles.filter((p) => p.userId !== email);
+    if (!writeProfiles(filteredProfiles)) {
+      console.error(`[Users] Error deleting profiles for user ${email}`);
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: "Không thể xóa profiles của user",
+      });
+    }
+    
+    // Xóa tất cả proxies của user này
+    const proxies = readProxies();
+    const filteredProxies = proxies.filter((p) => p.userId !== email);
+    if (!writeProxies(filteredProxies)) {
+      console.error(`[Users] Error deleting proxies for user ${email}`);
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: "Không thể xóa proxies của user",
+      });
+    }
+    
+    // Xóa chat session của user này
+    const chats = readChats();
+    const filteredChats = chats.filter((c) => c.userId !== email);
+    if (!writeChats(filteredChats)) {
+      console.error(`[Users] Error deleting chats for user ${email}`);
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: "Không thể xóa chat sessions của user",
+      });
+    }
+    
+    // Lưu lại danh sách users (bước cuối cùng)
+    if (!writeDatabase(filteredUsers)) {
+      console.error(`[Users] Error deleting user ${email}`);
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: "Không thể xóa user",
+      });
+    }
+
+    console.log(`[Users] Deleted: ${email} (profiles: ${profiles.length - filteredProfiles.length}, proxies: ${proxies.length - filteredProxies.length}, chats: ${chats.length - filteredChats.length})`);
+    res.json({ message: "Đã xóa user thành công" });
+  } catch (error) {
+    console.error("[Users] Delete error:", error);
+    res.status(500).json({
+      error: "Internal Server Error",
+      message: "Không thể xóa user",
+    });
+  }
 });
 
 // 1. API Đăng ký

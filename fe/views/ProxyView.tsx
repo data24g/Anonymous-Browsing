@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, memo } from "react";
 import { Server, Plus, CheckCircle, Trash2, Globe } from "lucide-react";
 import { Button, EmptyState, Input, Modal } from "../components/UIComponents";
 import { ProxyItem, User } from "../types";
@@ -13,7 +13,7 @@ interface ProxyViewProps {
   currentUser?: User | null; // User hiện tại để lấy userId
 }
 
-export const ProxyView: React.FC<ProxyViewProps> = ({
+const ProxyViewComponent: React.FC<ProxyViewProps> = ({
   t,
   proxies,
   setProxies,
@@ -88,28 +88,50 @@ export const ProxyView: React.FC<ProxyViewProps> = ({
       setProxyString(""); // Reset proxy string
       notify(t.savedSuccessfully);
 
-      // Check proxy location thực tế từ IP
+      // Check proxy location thực tế từ IP và update status lên server
       try {
         const locationResult = await checkProxyLocation(createdProxy);
+        const updatedProxy = {
+          ...createdProxy,
+          status: "active" as const,
+          location: locationResult.location || "Unknown"
+        };
+        
+        // Update lên server để lưu status và location
+        await proxyAPI.updateProxy(createdProxy.id, {
+          status: "active",
+          location: locationResult.location || "Unknown"
+        });
+        
+        // Update UI
         setProxies((prev) =>
           prev.map((p) =>
-            p.id === createdProxy.id
-              ? { 
-                  ...p, 
-                  status: "active" as const, 
-                  location: locationResult.location || "Unknown"
-                }
-              : p
+            p.id === createdProxy.id ? updatedProxy : p
           )
         );
       } catch (error: any) {
         console.error('[ProxyView] Error checking proxy location:', error);
         // Nếu check location fail, vẫn set status active nhưng location là Unknown
+        const updatedProxy = {
+          ...createdProxy,
+          status: "active" as const,
+          location: "Unknown"
+        };
+        
+        // Update lên server để lưu status
+        try {
+          await proxyAPI.updateProxy(createdProxy.id, {
+            status: "active",
+            location: "Unknown"
+          });
+        } catch (updateError) {
+          console.error('[ProxyView] Error updating proxy status:', updateError);
+        }
+        
+        // Update UI
         setProxies((prev) =>
           prev.map((p) =>
-            p.id === createdProxy.id
-              ? { ...p, status: "active" as const, location: "Unknown" }
-              : p
+            p.id === createdProxy.id ? updatedProxy : p
           )
         );
       }
@@ -330,3 +352,6 @@ export const ProxyView: React.FC<ProxyViewProps> = ({
     </div>
   );
 };
+
+// Memoize component để tránh re-render không cần thiết
+export const ProxyView = React.memo(ProxyViewComponent);

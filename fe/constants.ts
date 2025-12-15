@@ -256,8 +256,14 @@ export const MOCK_USER_AGENTS = [
 export const MOCK_GPUS = [
   "NVIDIA GeForce RTX 3060",
   "NVIDIA GeForce RTX 4090",
+  "NVIDIA GeForce GTX 5060",
   "AMD Radeon RX 6700 XT",
+  "AMD Radeon RX 7800 XT",
   "Intel Iris Xe Graphics",
+  "Intel Arc A770",
   "Apple M1",
-  "Apple M2 Pro"
+  "Apple M2 Pro",
+  "NVIDIA GeForce RTX 4070",
+  "AMD Radeon RX 6600 XT",
+  "NVIDIA GeForce RTX 3080"
 ];

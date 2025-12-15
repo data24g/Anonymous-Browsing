@@ -1,4 +1,4 @@
-import { User, ProfileItem, ProxyItem } from '../types';
+import { User, ProfileItem, ProxyItem, ChatSession } from '../types';
 import { getApiUrl, getAvailableApiUrl, checkServerHealth, getApiConfig, saveApiConfig } from '../config/api.config';
 import { getProxyConfig, getProxyUrl } from '../config/proxy.config';
 
@@ -213,20 +213,21 @@ export const authApi = {
         // Xử lý các loại lỗi kết nối cụ thể
         const errorMessage = error.message || '';
         const errorName = error.name || '';
+        const apiConfig = getApiConfig();
         
         // Lỗi connection refused
         if (errorMessage.includes('ERR_CONNECTION_REFUSED') || errorMessage.includes('ECONNREFUSED')) {
-          throw new Error(`Không thể kết nối đến server ${config.remoteUrl.replace('/api', '')}.\n\nNguyên nhân có thể:\n1. Server chưa được khởi động\n2. Port 3000 bị chặn bởi firewall\n3. IP server không đúng hoặc không khả dụng\n4. Server đang bảo trì\n\nVui lòng liên hệ quản trị viên để kiểm tra.`);
+          throw new Error(`Không thể kết nối đến server ${apiConfig.remoteUrl.replace('/api', '')}.\n\nNguyên nhân có thể:\n1. Server chưa được khởi động\n2. Port 3000 bị chặn bởi firewall\n3. IP server không đúng hoặc không khả dụng\n4. Server đang bảo trì\n\nVui lòng liên hệ quản trị viên để kiểm tra.`);
         }
         
         // Lỗi timeout
         if (errorName === 'AbortError' || errorMessage.includes('timeout')) {
-          throw new Error(`Kết nối đến server quá lâu (timeout).\n\nServer: ${config.remoteUrl.replace('/api', '')}\n\nVui lòng kiểm tra kết nối mạng.`);
+          throw new Error(`Kết nối đến server quá lâu (timeout).\n\nServer: ${apiConfig.remoteUrl.replace('/api', '')}\n\nVui lòng kiểm tra kết nối mạng.`);
         }
         
         // Lỗi network chung
         if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Failed to fetch')) {
-          throw new Error(`Không thể kết nối đến máy chủ.\n\nServer: ${config.remoteUrl.replace('/api', '')}\n\nVui lòng kiểm tra:\n1. Server có đang chạy không?\n2. Kết nối mạng có ổn định không?\n3. Firewall có chặn kết nối không?`);
+          throw new Error(`Không thể kết nối đến máy chủ.\n\nServer: ${apiConfig.remoteUrl.replace('/api', '')}\n\nVui lòng kiểm tra:\n1. Server có đang chạy không?\n2. Kết nối mạng có ổn định không?\n3. Firewall có chặn kết nối không?`);
         }
         
         // Lỗi từ server (400, 401, etc.)
@@ -306,8 +307,9 @@ export const profileAPI = {
       const url = `${apiUrl}/profiles`;
       const headers = getAuthHeaders();
       const body = JSON.stringify(profile);
+      const authHeader = (headers as Record<string, string>).Authorization;
       
-      console.log('[ProfileAPI] Creating profile:', { url, hasAuth: !!headers.Authorization, userId: profile.userId });
+      console.log('[ProfileAPI] Creating profile:', { url, hasAuth: !!authHeader, userId: profile.userId });
 
       const response = await fetch(url, {
         method: 'POST',
@@ -533,8 +535,9 @@ export const proxyAPI = {
       const url = `${apiUrl}/proxies`;
       const headers = getAuthHeaders();
       const body = JSON.stringify(proxy);
+      const authHeader = (headers as Record<string, string>).Authorization;
       
-      console.log('[ProxyAPI] Creating proxy:', { url, hasAuth: !!headers.Authorization, userId: proxy.userId });
+      console.log('[ProxyAPI] Creating proxy:', { url, hasAuth: !!authHeader, userId: proxy.userId });
 
       const response = await fetch(url, {
         method: 'POST',
@@ -674,6 +677,254 @@ export const proxyAPI = {
     } catch (error: any) {
       console.error('[ProxyAPI] Error deleting proxy:', error);
       throw new Error(error.message || 'Không thể xóa proxy');
+    }
+  },
+};
+
+/**
+ * Chat API
+ * Quản lý chat sessions giữa users và admin
+ */
+export const chatAPI = {
+  /**
+   * GET /api/chats
+   * Lấy tất cả chat sessions (chỉ admin)
+   */
+  getAllChatSessions: async (): Promise<ChatSession[]> => {
+    try {
+      const apiUrl = await getAvailableApiUrl();
+      const response = await fetch(`${apiUrl}/chats`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        }
+        if (response.status === 403) {
+          throw new Error('Chỉ admin mới có quyền xem tất cả chat sessions');
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Lỗi khi tải chat sessions: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.chatSessions || [];
+    } catch (error: any) {
+      console.error('[ChatAPI] Error getting all chat sessions:', error);
+      throw new Error(error.message || 'Không thể tải chat sessions');
+    }
+  },
+
+  /**
+   * GET /api/chats/:userId
+   * Lấy chat session của một user cụ thể
+   */
+  getChatSession: async (userId: string): Promise<ChatSession> => {
+    try {
+      const apiUrl = await getAvailableApiUrl();
+      const response = await fetch(`${apiUrl}/chats/${encodeURIComponent(userId)}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Lỗi khi tải chat session: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.chatSession || {
+        userId,
+        userEmail: userId,
+        messages: [],
+        lastUpdated: Date.now(),
+      };
+    } catch (error: any) {
+      console.error('[ChatAPI] Error getting chat session:', error);
+      throw new Error(error.message || 'Không thể tải chat session');
+    }
+  },
+
+  /**
+   * POST /api/chats
+   * Tạo hoặc cập nhật chat session
+   */
+  saveChatSession: async (chatSession: ChatSession): Promise<ChatSession> => {
+    try {
+      const apiUrl = await getAvailableApiUrl();
+      const response = await fetch(`${apiUrl}/chats`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          ...chatSession,
+          lastUpdated: Date.now(),
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Lỗi khi lưu chat session: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.chatSession;
+    } catch (error: any) {
+      console.error('[ChatAPI] Error saving chat session:', error);
+      throw new Error(error.message || 'Không thể lưu chat session');
+    }
+  },
+
+  /**
+   * PUT /api/chats/:userId
+   * Cập nhật chat session
+   */
+  updateChatSession: async (userId: string, updates: Partial<ChatSession>): Promise<ChatSession> => {
+    try {
+      const apiUrl = await getAvailableApiUrl();
+      const response = await fetch(`${apiUrl}/chats/${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          ...updates,
+          lastUpdated: Date.now(),
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        }
+        if (response.status === 404) {
+          throw new Error('Không tìm thấy chat session');
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Lỗi khi cập nhật chat session: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.chatSession;
+    } catch (error: any) {
+      console.error('[ChatAPI] Error updating chat session:', error);
+      throw new Error(error.message || 'Không thể cập nhật chat session');
+    }
+  },
+
+  /**
+   * DELETE /api/chats/:userId
+   * Xóa chat session
+   */
+  deleteChatSession: async (userId: string): Promise<void> => {
+    try {
+      const apiUrl = await getAvailableApiUrl();
+      const response = await fetch(`${apiUrl}/chats/${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        }
+        if (response.status === 404) {
+          throw new Error('Không tìm thấy chat session');
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Lỗi khi xóa chat session: ${response.status}`);
+      }
+    } catch (error: any) {
+      console.error('[ChatAPI] Error deleting chat session:', error);
+      throw new Error(error.message || 'Không thể xóa chat session');
+    }
+  },
+};
+
+/**
+ * User Management API (Admin only)
+ */
+export const userAPI = {
+  /**
+   * GET /api/users
+   * Lấy danh sách tất cả users (chỉ admin)
+   */
+  getAllUsers: async (): Promise<User[]> => {
+    try {
+      const apiUrl = await getAvailableApiUrl();
+      const headers = getAuthHeaders();
+      
+      console.log('[UserAPI] Getting users from:', apiUrl);
+      console.log('[UserAPI] Headers:', { ...headers, Authorization: headers.Authorization ? 'Present' : 'Missing' });
+      
+      const response = await fetch(`${apiUrl}/users`, {
+        method: 'GET',
+        headers: headers,
+      });
+
+      console.log('[UserAPI] Response status:', response.status);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        }
+        if (response.status === 403) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('[UserAPI] 403 Forbidden:', errorData);
+          throw new Error(errorData.message || 'Bạn không có quyền truy cập. Chỉ admin mới có quyền xem danh sách users.');
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Lỗi khi lấy danh sách users: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('[UserAPI] Received users:', data.users?.length || 0);
+      return data.users || [];
+    } catch (error: any) {
+      console.error('[UserAPI] Error getting users:', error);
+      throw new Error(error.message || 'Không thể lấy danh sách users');
+    }
+  },
+
+  /**
+   * DELETE /api/users/:email
+   * Xóa user (chỉ admin)
+   */
+  deleteUser: async (email: string): Promise<void> => {
+    try {
+      const apiUrl = await getAvailableApiUrl();
+      const response = await fetch(`${apiUrl}/users/${encodeURIComponent(email)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        }
+        if (response.status === 403) {
+          throw new Error('Bạn không có quyền xóa user. Chỉ admin mới có quyền này.');
+        }
+        if (response.status === 404) {
+          throw new Error('Không tìm thấy user');
+        }
+        if (response.status === 400) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Không thể xóa user này');
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Lỗi khi xóa user: ${response.status}`);
+      }
+
+      return;
+    } catch (error: any) {
+      console.error('[UserAPI] Error deleting user:', error);
+      throw new Error(error.message || 'Không thể xóa user');
     }
   },
 };

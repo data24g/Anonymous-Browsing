@@ -8,6 +8,7 @@ import {
   Settings,
   UserCog,
   LogOut,
+  Users,
 } from "lucide-react";
 import { User, View } from "../types";
 import { APP_NAME } from "../constants";
@@ -108,12 +109,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {currentUser?.isAdmin && (
           <div className="mt-6 border-t border-slate-200 dark:border-slate-800 pt-4">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-3">
+              Admin
+            </div>
             <NavItem
               icon={<UserCog />}
               label={t.adminPanel}
               active={currentView === "admin_chat"}
               onClick={() => {
                 setCurrentView("admin_chat");
+              }}
+            />
+            <NavItem
+              icon={<Users />}
+              label="Quản Lý Người Dùng"
+              active={currentView === "admin_users"}
+              onClick={() => {
+                setCurrentView("admin_users");
               }}
             />
           </div>

@@ -1,12 +1,15 @@
 export type Language = 'en' | 'vi';
 export type Theme = 'light' | 'dark';
-export type View = 'auth' | 'profiles' | 'proxies' | 'automation' | 'support' | 'settings' | 'admin_chat';
+export type View = 'auth' | 'profiles' | 'proxies' | 'automation' | 'support' | 'settings' | 'admin_chat' | 'admin_users';
 
 export interface User {
-  username: string;
+  username?: string;
+  name?: string;
   email: string;
   isLoggedIn: boolean;
   isAdmin?: boolean; // Mock admin role
+  role?: 'admin' | 'user';
+  createdAt?: string;
 }
 
 export interface ProxyItem {

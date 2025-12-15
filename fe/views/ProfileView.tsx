@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Globe, Play, Plus, User as UserIcon, Smartphone, Laptop, Square, Trash2, RefreshCw, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { Globe, Play, Plus, User as UserIcon, Smartphone, Laptop, Square, Trash2, RefreshCw } from 'lucide-react';
 import { Button, EmptyState, Input, Modal, Select } from '../components/UIComponents';
 import { ProfileItem, ProxyItem, User } from '../types';
 import { CPU_OPTIONS, MOCK_GPUS, MOCK_USER_AGENTS, RAM_OPTIONS, RESOLUTION_OPTIONS } from '../constants';
@@ -9,15 +9,14 @@ interface ProfileViewProps {
   t: any;
   profiles: ProfileItem[];
   proxies: ProxyItem[];
-  setProfiles: (profiles: ProfileItem[]) => void;
+  setProfiles: React.Dispatch<React.SetStateAction<ProfileItem[]>>;
   notify: (msg: string, type?: 'success' | 'error') => void;
   currentUser?: User | null; // User hiện tại để lấy userId
 }
 
-export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, setProfiles, notify, currentUser }) => {
+const ProfileViewComponent: React.FC<ProfileViewProps> = ({ t, profiles, proxies, setProfiles, notify, currentUser }) => {
   const [urlToOpen, setUrlToOpen] = useState('https://whoer.net');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [activeProfileTab, setActiveProfileTab] = useState<'Overview' | 'Hardware' | 'Advanced'>('Overview');
 
   // Listen for profile status updates from Electron
   useEffect(() => {
@@ -28,10 +27,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
       const handleProfileStatus = (event: any, data: { profileId?: string; action?: string; status: string; message?: string; messageKey?: string }) => {
         if (data.action === 'reset-all') {
           // Reset all profiles to stopped (khi app tắt hoặc mở lại)
-          setProfiles(prevProfiles => {
-            const updated = prevProfiles.map(p => ({ ...p, status: 'stopped' as const }));
+          setProfiles((prevProfiles: ProfileItem[]) => {
+            const updated = prevProfiles.map((p: ProfileItem) => ({ ...p, status: 'stopped' as const }));
             // Update status trong database/API cho tất cả profiles
-            updated.forEach(profile => {
+            updated.forEach((profile: ProfileItem) => {
               profileAPI.updateProfile(profile.id, { status: 'stopped' }).catch(err => {
                 console.error(`[ProfileView] Error updating profile ${profile.id} status:`, err);
               });
@@ -45,19 +44,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
         if (!data.profileId) return;
 
         // Dùng functional update để đảm bảo có state mới nhất
-        setProfiles(prevProfiles => {
-          const profile = prevProfiles.find(p => p.id === data.profileId);
+        setProfiles((prevProfiles: ProfileItem[]) => {
+          const profile = prevProfiles.find((p: ProfileItem) => p.id === data.profileId);
           if (profile) {
             const updatedProfile = { ...profile, status: data.status as 'running' | 'stopped' };
-            const newProfiles = prevProfiles.map(p => p.id === data.profileId ? updatedProfile : p);
+            const newProfiles = prevProfiles.map((p: ProfileItem) => p.id === data.profileId ? updatedProfile : p);
             
             // Notify sau khi update state - translate message nếu có messageKey
             // Bỏ qua notify nếu messageKey là "profileNotRunning" (chỉ update status thầm lặng)
-            if (data.messageKey && data.messageKey !== 'profileNotRunning' && t[data.messageKey]) {
+            const messageKey = data.messageKey;
+            if (messageKey && messageKey !== 'profileNotRunning' && messageKey in t) {
               setTimeout(() => {
-                notify(t[data.messageKey], data.status === 'error' ? 'error' : 'success');
+                notify((t as any)[messageKey] || data.message || '', data.status === 'error' ? 'error' : 'success');
               }, 0);
-            } else if (data.message && data.messageKey !== 'profileNotRunning') {
+            } else if (data.message && messageKey !== 'profileNotRunning') {
               setTimeout(() => {
                 notify(data.message!, data.status === 'error' ? 'error' : 'success');
               }, 0);
@@ -89,18 +89,49 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
   }, [profiles, setProfiles, notify]);
   
   const [profileForm, setProfileForm] = useState<Partial<ProfileItem>>({
-    name: '', deviceType: 'desktop', os: 'windows', browser: 'chrome', timezone: 'auto', userAgent: MOCK_USER_AGENTS[0],
+    name: '', deviceType: undefined, os: undefined, browser: undefined, timezone: 'auto', userAgent: '',
     hardware: {
-        cpuCores: 8, ram: 16, gpu: MOCK_GPUS[0], screenResolution: RESOLUTION_OPTIONS[0],
+        cpuCores: 0, ram: 0, gpu: '', screenResolution: '',
         audioContextNoise: true, canvasNoise: true, webGLNoise: true, webRTCPolicy: 'disable'
     }
   });
 
   const getHardwareState = () => {
     return profileForm.hardware || {
-        cpuCores: 8, ram: 16, gpu: MOCK_GPUS[0], screenResolution: RESOLUTION_OPTIONS[0],
+        cpuCores: 0, ram: 0, gpu: '', screenResolution: '',
         audioContextNoise: true, canvasNoise: true, webGLNoise: true, webRTCPolicy: 'disable'
     };
+  };
+
+  // Function để random cấu hình ngẫu nhiên
+  const randomizeProfile = () => {
+    const randomOS = 'windows' as 'windows';
+    const randomBrowser = 'chrome' as 'chrome';
+    const randomDeviceType = ['desktop', 'mobile'][Math.floor(Math.random() * 2)] as 'desktop' | 'mobile';
+    const randomUserAgent = MOCK_USER_AGENTS[Math.floor(Math.random() * MOCK_USER_AGENTS.length)];
+    const randomCPU = CPU_OPTIONS[Math.floor(Math.random() * CPU_OPTIONS.length)];
+    const randomRAM = RAM_OPTIONS[Math.floor(Math.random() * RAM_OPTIONS.length)];
+    const randomGPU = MOCK_GPUS[Math.floor(Math.random() * MOCK_GPUS.length)];
+    const randomResolution = RESOLUTION_OPTIONS[Math.floor(Math.random() * RESOLUTION_OPTIONS.length)];
+    
+    setProfileForm({
+      ...profileForm,
+      os: randomOS,
+      browser: randomBrowser,
+      deviceType: randomDeviceType,
+      userAgent: randomUserAgent,
+      hardware: {
+        ...getHardwareState(),
+        cpuCores: randomCPU,
+        ram: randomRAM,
+        gpu: randomGPU,
+        screenResolution: randomResolution,
+        audioContextNoise: true,
+        canvasNoise: true,
+        webGLNoise: true,
+        webRTCPolicy: 'disable'
+      }
+    });
   };
 
   const updateHardware = (key: keyof ProfileItem['hardware'], value: any) => {
@@ -118,16 +149,52 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
     }
 
     const hw = getHardwareState();
+
+    // Validate required fields
+    if (!profileForm.name || !profileForm.name.trim()) {
+      notify('Vui lòng nhập tên profile', 'error');
+      return;
+    }
+    if (!profileForm.os) {
+      notify('Vui lòng chọn hệ điều hành', 'error');
+      return;
+    }
+    if (!profileForm.browser) {
+      notify('Vui lòng chọn trình duyệt', 'error');
+      return;
+    }
+    if (!hw.cpuCores || hw.cpuCores === 0) {
+      notify('Vui lòng chọn số nhân CPU', 'error');
+      return;
+    }
+    if (!hw.ram || hw.ram === 0) {
+      notify('Vui lòng chọn RAM', 'error');
+      return;
+    }
+    if (!hw.gpu || !hw.gpu.trim()) {
+      notify('Vui lòng chọn GPU', 'error');
+      return;
+    }
+    if (!hw.screenResolution || !hw.screenResolution.trim()) {
+      notify('Vui lòng chọn độ phân giải màn hình', 'error');
+      return;
+    }
     const tempId = `temp-${Date.now()}`; // Temporary ID để hiển thị ngay
     const newProfileData = {
       userId: currentUser.email,
-      name: profileForm.name || `Profile ${profiles.length + 1}`,
+      name: profileForm.name.trim(),
       deviceType: profileForm.deviceType || 'desktop',
-      os: profileForm.os || 'windows',
-      browser: profileForm.browser || 'chrome',
-      userAgent: profileForm.userAgent || MOCK_USER_AGENTS[0],
-      timezone: profileForm.timezone || 'Asia/Ho_Chi_Minh',
-      hardware: hw,
+      os: profileForm.os,
+      browser: profileForm.browser,
+      userAgent: profileForm.userAgent || MOCK_USER_AGENTS[Math.floor(Math.random() * MOCK_USER_AGENTS.length)],
+      timezone: profileForm.timezone || 'auto',
+      hardware: {
+        ...hw,
+        cpuCores: hw.cpuCores!,
+        ram: hw.ram!,
+        gpu: hw.gpu!,
+        screenResolution: hw.screenResolution!
+      },
       status: 'stopped' as const,
       proxyId: profileForm.proxyId
     };
@@ -140,30 +207,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
       updatedAt: Date.now(),
     };
     
-    setProfiles(prevProfiles => [...prevProfiles, optimisticProfile]);
+    setProfiles((prevProfiles: ProfileItem[]) => [...prevProfiles, optimisticProfile]);
     setIsProfileModalOpen(false);
     
     // Reset form ngay lập tức
     setProfileForm({ 
-        name: '', deviceType: 'desktop', os: 'windows', browser: 'chrome', timezone: 'auto', userAgent: MOCK_USER_AGENTS[0],
+        name: '', deviceType: undefined, os: undefined, browser: undefined, timezone: 'auto', userAgent: '',
         hardware: {
-            cpuCores: 8, ram: 16, gpu: MOCK_GPUS[0], screenResolution: RESOLUTION_OPTIONS[0],
+            cpuCores: 0, ram: 0, gpu: '', screenResolution: '',
             audioContextNoise: true, canvasNoise: true, webGLNoise: true, webRTCPolicy: 'disable'
         }
     });
-    setActiveProfileTab('Overview');
     notify(t.savedSuccessfully);
 
     // Gọi API trong background và cập nhật với ID thật
     try {
       const createdProfile = await profileAPI.createProfile(newProfileData);
       // Thay thế profile tạm bằng profile thật từ server
-      setProfiles(prevProfiles => 
-        prevProfiles.map(p => p.id === tempId ? createdProfile : p)
+      setProfiles((prevProfiles: ProfileItem[]) => 
+        prevProfiles.map((p: ProfileItem) => p.id === tempId ? createdProfile : p)
       );
     } catch (error: any) {
       // Rollback nếu API fail
-      setProfiles(prevProfiles => prevProfiles.filter(p => p.id !== tempId));
+      setProfiles((prevProfiles: ProfileItem[]) => prevProfiles.filter((p: ProfileItem) => p.id !== tempId));
       notify(error.message || t.cannotCreateProfile, 'error');
       // Mở lại modal để user có thể thử lại
       setIsProfileModalOpen(true);
@@ -194,7 +260,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
         ipcRenderer.send('stop-profile', id);
         
         // Cập nhật UI ngay lập tức, không cần đợi API
-        setProfiles(prevProfiles => prevProfiles.map(p => p.id === id ? { ...p, status: 'stopped' as const } : p));
+        setProfiles((prevProfiles: ProfileItem[]) => prevProfiles.map((p: ProfileItem) => p.id === id ? { ...p, status: 'stopped' as const } : p));
         // Chỉ notify nếu thực sự có process đang chạy (sẽ được xử lý bởi IPC handler)
         // Nếu không có process, chỉ update status thầm lặng
         notify(t.profileStopped);
@@ -208,7 +274,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
         console.log('[ProfileView] Starting profile:', id, profile);
         
         // Cập nhật UI ngay lập tức trước khi gửi IPC
-        setProfiles(prevProfiles => prevProfiles.map(p => p.id === id ? { ...p, status: 'running' as const } : p));
+        setProfiles((prevProfiles: ProfileItem[]) => prevProfiles.map((p: ProfileItem) => p.id === id ? { ...p, status: 'running' as const } : p));
         notify(t.profileStarting);
         
         // Lấy proxy string nếu có
@@ -251,7 +317,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
 
     // Optimistic update: Xóa khỏi UI ngay lập tức
     const originalProfiles = [...profiles]; // Lưu bản sao để rollback
-    setProfiles(prevProfiles => prevProfiles.filter(p => p.id !== id));
+    setProfiles((prevProfiles: ProfileItem[]) => prevProfiles.filter((p: ProfileItem) => p.id !== id));
     
     // Gọi API để xóa
     try {
@@ -268,29 +334,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
     const hw = getHardwareState();
     return (
         <div className="flex flex-col h-full">
-            {/* Tabs */}
-            <div className="flex border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 sticky top-0 z-10">
-                {(['Overview', 'Hardware', 'Advanced'] as const).map((tab) => (
-                    <button
-                        key={tab}
-                        onClick={() => setActiveProfileTab(tab)}
-                        className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
-                            activeProfileTab === tab 
-                            ? 'border-blue-600 text-blue-600 dark:text-blue-400' 
-                            : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
-                        }`}
-                    >
-                        {t[tab.toLowerCase() as keyof typeof t]}
-                    </button>
-                ))}
-            </div>
-
             <div className="p-6 space-y-6">
-                {activeProfileTab === 'Overview' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {/* Header với button Random */}
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{t.createProfile}</h3>
+                    <Button 
+                        variant="secondary" 
+                        onClick={randomizeProfile}
+                        className="flex items-center gap-2"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                        Random Config
+                    </Button>
+                </div>
+
+                {/* Tổng quan và Phần cứng gộp lại */}
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    {/* Tổng quan */}
+                    <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 pb-2">
+                            {t.overview}
+                        </h4>
                         <Input 
                             label={t.profileName} 
-                            value={profileForm.name} 
+                            value={profileForm.name || ''} 
                             onChange={e => setProfileForm({...profileForm, name: e.target.value})} 
                             placeholder="Profile 1"
                             className="bg-slate-800 text-white border-none focus:ring-2 focus:ring-blue-500" 
@@ -298,24 +365,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
                         <div className="grid grid-cols-2 gap-4">
                             <Select 
                                 label={t.os} 
-                                value={profileForm.os}
+                                value={profileForm.os || ''}
                                 onChange={e => setProfileForm({...profileForm, os: e.target.value as any})}
                                 className="bg-slate-800 text-white border-none"
                             >
+                                <option value="">-- Chọn OS --</option>
                                 <option value="windows">Windows</option>
-                                <option value="mac">macOS</option>
-                                <option value="linux">Linux</option>
-                                <option value="android">Android</option>
                             </Select>
                             <Select 
                                 label={t.browser} 
-                                value={profileForm.browser}
+                                value={profileForm.browser || ''}
                                 onChange={e => setProfileForm({...profileForm, browser: e.target.value as any})}
                                 className="bg-slate-800 text-white border-none"
                             >
+                                <option value="">-- Chọn Browser --</option>
                                 <option value="chrome">Chrome</option>
-                                <option value="firefox">Firefox</option>
-                                <option value="edge">Edge</option>
                             </Select>
                         </div>
 
@@ -343,62 +407,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
                             </div>
                             <textarea 
                                 className="w-full bg-slate-800 border-none text-slate-300 text-xs font-mono rounded-lg p-3 h-24 focus:ring-2 focus:ring-blue-500"
-                                value={profileForm.userAgent}
+                                value={profileForm.userAgent || ''}
                                 onChange={(e) => setProfileForm({...profileForm, userAgent: e.target.value})}
+                                placeholder="User Agent sẽ được tạo tự động khi random..."
                             />
                         </div>
-                    </div>
-                )}
 
-                {activeProfileTab === 'Hardware' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                         <div className="grid grid-cols-2 gap-4">
-                             <Select label={t.cpuCores} value={hw.cpuCores} onChange={(e) => updateHardware('cpuCores', Number(e.target.value))} className="bg-slate-800 text-white border-none">
-                                {CPU_OPTIONS.map(opt => <option key={opt} value={opt}>{opt} Cores</option>)}
-                             </Select>
-                             <Select label={t.memory} value={hw.ram} onChange={(e) => updateHardware('ram', Number(e.target.value))} className="bg-slate-800 text-white border-none">
-                                {RAM_OPTIONS.map(opt => <option key={opt} value={opt}>{opt} GB</option>)}
-                             </Select>
-                         </div>
-                         <Select label={t.screenRes} value={hw.screenResolution} onChange={(e) => updateHardware('screenResolution', e.target.value)} className="bg-slate-800 text-white border-none">
-                            {RESOLUTION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                         </Select>
-                         <Select label={t.gpu} value={hw.gpu} onChange={(e) => updateHardware('gpu', e.target.value)} className="bg-slate-800 text-white border-none">
-                             {MOCK_GPUS.map(gpu => <option key={gpu} value={gpu}>{gpu}</option>)}
-                         </Select>
-                    </div>
-                )}
-
-                {activeProfileTab === 'Advanced' && (
-                    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-900/30 rounded-lg p-4 flex items-start gap-3">
-                           <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-500 shrink-0 mt-0.5" />
-                           <div>
-                              <h4 className="text-sm font-bold text-orange-800 dark:text-orange-400">{t.advancedWarn}</h4>
-                              <p className="text-xs text-orange-700 dark:text-orange-500/80 mt-1 leading-relaxed">{t.advancedWarnDesc}</p>
-                           </div>
-                        </div>
-
-                        <div className="space-y-3">
-                             <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
-                                 <div><span className="block text-sm font-medium text-slate-900 dark:text-white">{t.canvasNoise}</span><span className="text-xs text-slate-500">Add unique noise to Canvas readouts</span></div>
-                                 <input type="checkbox" className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300" checked={hw.canvasNoise} onChange={(e) => updateHardware('canvasNoise', e.target.checked)} />
-                             </div>
-                             <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
-                                 <div><span className="block text-sm font-medium text-slate-900 dark:text-white">{t.audioNoise}</span><span className="text-xs text-slate-500">Spoof Audio stack signatures</span></div>
-                                 <input type="checkbox" className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300" checked={hw.audioContextNoise} onChange={(e) => updateHardware('audioContextNoise', e.target.checked)} />
-                             </div>
-                             <div className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
-                                 <div className="flex justify-between items-center mb-2"><div><span className="block text-sm font-medium text-slate-900 dark:text-white">{t.webrtc}</span><span className="text-xs text-slate-500">Control IP leakage via WebRTC</span></div></div>
-                                 <select className="w-full bg-slate-700 border-none text-white text-sm rounded-lg p-2.5" value={hw.webRTCPolicy} onChange={(e) => updateHardware('webRTCPolicy', e.target.value)}>
-                                     <option value="disable">Disable</option>
-                                     <option value="real_public_ip">Real Public IP</option>
-                                     <option value="fake_ip">Fake IP</option>
-                                 </select>
-                             </div>
-                        </div>
-                        <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                            <Select label="Timezone" value={profileForm.timezone} onChange={e => setProfileForm({...profileForm, timezone: e.target.value})}>
+                        <div className="space-y-1.5">
+                            <Select label="Timezone" value={profileForm.timezone || 'auto'} onChange={e => setProfileForm({...profileForm, timezone: e.target.value})} className="bg-slate-800 text-white border-none">
                                 <option value="auto">Auto (Based on IP)</option>
                                 <option value="Asia/Ho_Chi_Minh">Asia/Ho_Chi_Minh</option>
                                 <option value="America/New_York">America/New_York</option>
@@ -406,7 +422,52 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
                             </Select>
                         </div>
                     </div>
-                )}
+
+                    {/* Phần cứng */}
+                    <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                        <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 pb-2">
+                            {t.hardware}
+                        </h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Select 
+                                label={t.cpuCores} 
+                                value={hw.cpuCores || 0} 
+                                onChange={(e) => updateHardware('cpuCores', e.target.value ? Number(e.target.value) : 0)} 
+                                className="bg-slate-800 text-white border-none"
+                            >
+                                <option value="0">-- Chọn CPU Cores --</option>
+                                {CPU_OPTIONS.map(opt => <option key={opt} value={opt}>{opt} Cores</option>)}
+                            </Select>
+                            <Select 
+                                label={t.memory} 
+                                value={hw.ram || 0} 
+                                onChange={(e) => updateHardware('ram', e.target.value ? Number(e.target.value) : 0)} 
+                                className="bg-slate-800 text-white border-none"
+                            >
+                                <option value="0">-- Chọn RAM --</option>
+                                {RAM_OPTIONS.map(opt => <option key={opt} value={opt}>{opt} GB</option>)}
+                            </Select>
+                        </div>
+                        <Select 
+                            label={t.screenRes} 
+                            value={hw.screenResolution || ''} 
+                            onChange={(e) => updateHardware('screenResolution', e.target.value)} 
+                            className="bg-slate-800 text-white border-none"
+                        >
+                            <option value="">-- Chọn Độ phân giải --</option>
+                            {RESOLUTION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </Select>
+                        <Select 
+                            label={t.gpu} 
+                            value={hw.gpu || ''} 
+                            onChange={(e) => updateHardware('gpu', e.target.value)} 
+                            className="bg-slate-800 text-white border-none"
+                        >
+                            <option value="">-- Chọn GPU --</option>
+                            {MOCK_GPUS.map(gpu => <option key={gpu} value={gpu}>{gpu}</option>)}
+                        </Select>
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -493,3 +554,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ t, profiles, proxies, 
     </div>
   );
 };
+
+// Memoize component để tránh re-render không cần thiết
+export const ProfileView = React.memo(ProfileViewComponent);
