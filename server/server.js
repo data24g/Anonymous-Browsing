@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, "database.json");
 const PROFILES_FILE = path.join(__dirname, "profiles.json");
 const PROXIES_FILE = path.join(__dirname, "proxies.json");
+const CHATS_FILE = path.join(__dirname, "chats.json");
 
 // --- CẤU HÌNH ---
 // CORS: Cho phép tất cả origins (có thể config cụ thể nếu cần)
@@ -116,6 +117,33 @@ const writeProxies = (data) => {
     return true;
   } catch (error) {
     console.error("Lỗi ghi proxies:", error);
+    return false;
+  }
+};
+
+// --- HÀM HỖ TRỢ CHO CHAT SESSIONS ---
+
+// Đọc chat sessions từ file
+const readChats = () => {
+  try {
+    if (!fs.existsSync(CHATS_FILE)) {
+      return [];
+    }
+    const data = fs.readFileSync(CHATS_FILE, "utf8");
+    return JSON.parse(data);
+  } catch (error) {
+    console.error("Lỗi đọc chats:", error);
+    return [];
+  }
+};
+
+// Ghi chat sessions vào file
+const writeChats = (data) => {
+  try {
+    fs.writeFileSync(CHATS_FILE, JSON.stringify(data, null, 2));
+    return true;
+  } catch (error) {
+    console.error("Lỗi ghi chats:", error);
     return false;
   }
 };
@@ -570,6 +598,215 @@ app.delete("/api/proxies/:id", authenticate, checkUserOwnership, (req, res) => {
   }
 });
 
+// --- API CHAT SESSIONS ---
+
+// GET /api/chats - Lấy tất cả chat sessions (chỉ admin)
+app.get("/api/chats", authenticate, (req, res) => {
+  try {
+    // Kiểm tra quyền admin
+    const authHeader = req.headers.authorization;
+    const token = authHeader.replace("Bearer ", "");
+    
+    // Extract email từ token: fake-jwt-{timestamp}-{email}
+    const tokenParts = token.split("-");
+    let userEmail = null;
+    
+    if (tokenParts.length >= 4) {
+      // Token format mới: fake-jwt-{timestamp}-{email}
+      userEmail = tokenParts.slice(3).join("-");
+    } else {
+      // Token format cũ - không có email, lấy từ query hoặc body
+      userEmail = req.query.userId || req.body.userId;
+    }
+    
+    if (!userEmail) {
+      return res.status(400).json({
+        error: "Bad Request",
+        message: "Không thể xác định user từ token",
+      });
+    }
+    
+    const users = readDatabase();
+    const user = users.find((u) => u.email === userEmail);
+    
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({
+        error: "Forbidden",
+        message: "Chỉ admin mới có quyền xem tất cả chat sessions",
+      });
+    }
+
+    const chats = readChats();
+    res.json({ chatSessions: chats });
+  } catch (error) {
+    console.error("[Chats] Get error:", error);
+    res.status(500).json({
+      error: "Internal Server Error",
+      message: "Không thể tải danh sách chat sessions",
+    });
+  }
+});
+
+// GET /api/chats/:userId - Lấy chat session của một user cụ thể
+app.get("/api/chats/:userId", authenticate, (req, res) => {
+  try {
+    const { userId } = req.params;
+    const chats = readChats();
+    const session = chats.find((c) => c.userId === userId || c.userEmail === userId);
+    
+    if (!session) {
+      // Trả về session rỗng nếu chưa có
+      return res.json({
+        chatSession: {
+          userId,
+          userEmail: userId,
+          messages: [],
+          lastUpdated: Date.now(),
+        },
+      });
+    }
+
+    res.json({ chatSession: session });
+  } catch (error) {
+    console.error("[Chats] Get by userId error:", error);
+    res.status(500).json({
+      error: "Internal Server Error",
+      message: "Không thể tải chat session",
+    });
+  }
+});
+
+// POST /api/chats - Tạo hoặc cập nhật chat session
+app.post("/api/chats", authenticate, (req, res) => {
+  try {
+    const { userId, userEmail, messages, lastUpdated } = req.body;
+
+    if (!userId && !userEmail) {
+      return res.status(400).json({
+        error: "Bad Request",
+        message: "userId hoặc userEmail là bắt buộc",
+      });
+    }
+
+    const chats = readChats();
+    const sessionId = userId || userEmail;
+    const existingIndex = chats.findIndex(
+      (c) => c.userId === sessionId || c.userEmail === sessionId
+    );
+
+    const chatSession = {
+      userId: sessionId,
+      userEmail: userEmail || userId,
+      messages: messages || [],
+      lastUpdated: lastUpdated || Date.now(),
+    };
+
+    if (existingIndex !== -1) {
+      // Cập nhật session hiện có
+      chats[existingIndex] = chatSession;
+    } else {
+      // Tạo session mới
+      chats.push(chatSession);
+    }
+
+    if (!writeChats(chats)) {
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: "Không thể lưu chat session vào file",
+      });
+    }
+
+    console.log(`[Chats] ${existingIndex !== -1 ? "Updated" : "Created"}: ${sessionId}`);
+    res.status(existingIndex !== -1 ? 200 : 201).json({ chatSession });
+  } catch (error) {
+    console.error("[Chats] Create/Update error:", error);
+    res.status(500).json({
+      error: "Internal Server Error",
+      message: "Không thể tạo/cập nhật chat session",
+    });
+  }
+});
+
+// PUT /api/chats/:userId - Cập nhật chat session
+app.put("/api/chats/:userId", authenticate, (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { messages, lastUpdated } = req.body;
+
+    const chats = readChats();
+    const sessionIndex = chats.findIndex(
+      (c) => c.userId === userId || c.userEmail === userId
+    );
+
+    if (sessionIndex === -1) {
+      return res.status(404).json({
+        error: "Not Found",
+        message: "Không tìm thấy chat session",
+      });
+    }
+
+    // Cập nhật session
+    chats[sessionIndex] = {
+      ...chats[sessionIndex],
+      messages: messages !== undefined ? messages : chats[sessionIndex].messages,
+      lastUpdated: lastUpdated !== undefined ? lastUpdated : Date.now(),
+    };
+
+    if (!writeChats(chats)) {
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: "Không thể cập nhật chat session vào file",
+      });
+    }
+
+    console.log(`[Chats] Updated: ${userId}`);
+    res.json({ chatSession: chats[sessionIndex] });
+  } catch (error) {
+    console.error("[Chats] Update error:", error);
+    res.status(500).json({
+      error: "Internal Server Error",
+      message: "Không thể cập nhật chat session",
+    });
+  }
+});
+
+// DELETE /api/chats/:userId - Xóa chat session
+app.delete("/api/chats/:userId", authenticate, (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const chats = readChats();
+    const sessionIndex = chats.findIndex(
+      (c) => c.userId === userId || c.userEmail === userId
+    );
+
+    if (sessionIndex === -1) {
+      return res.status(404).json({
+        error: "Not Found",
+        message: "Không tìm thấy chat session",
+      });
+    }
+
+    // Xóa session
+    chats.splice(sessionIndex, 1);
+    if (!writeChats(chats)) {
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: "Không thể xóa chat session khỏi file",
+      });
+    }
+
+    console.log(`[Chats] Deleted: ${userId}`);
+    res.json({ success: true, message: "Chat session đã được xóa" });
+  } catch (error) {
+    console.error("[Chats] Delete error:", error);
+    res.status(500).json({
+      error: "Internal Server Error",
+      message: "Không thể xóa chat session",
+    });
+  }
+});
+
 // Health check endpoint
 app.get("/api/health", (req, res) => {
   res.json({
@@ -637,6 +874,7 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`   Users: ${DB_FILE}`);
   console.log(`   Profiles: ${PROFILES_FILE}`);
   console.log(`   Proxies: ${PROXIES_FILE}`);
+  console.log(`   Chats: ${CHATS_FILE}`);
   console.log(`   API URL: http://localhost:${PORT}/api`);
   console.log(`   External: http://163.44.193.71:${PORT}/api`);
   console.log(`=============================================`);
