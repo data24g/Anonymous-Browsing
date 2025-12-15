@@ -62,7 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside className="w-64 bg-white dark:bg-slate-850 border-r border-slate-200 dark:border-slate-800 flex flex-col z-20 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)]">
       <div className="p-6 flex items-center gap-3">
         <div className="p-2 rounded-lg bg-white">
-          <img src="/logo.png" alt="Logo" className="w-10 h-10" />
+          <img src="logo.png" alt="Logo" className="w-10 h-10" />
         </div>
 
         <span className="text-xl font-bold tracking-tight">{APP_NAME}</span>
@@ -122,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             />
             <NavItem
               icon={<Users />}
-              label="Quản Lý Người Dùng"
+              label={t.userManagement}
               active={currentView === "admin_users"}
               onClick={() => {
                 setCurrentView("admin_users");

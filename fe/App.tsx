@@ -297,7 +297,7 @@ export default function App() {
                 )}
                 {currentView === "admin_users" && (
                   <>
-                    <UserIcon className="text-blue-500" /> Quản Lý Người Dùng
+                    <UserIcon className="text-blue-500" /> {t.userManagement}
                   </>
                 )}
               </h1>
@@ -365,6 +365,7 @@ export default function App() {
                   <AdminUsersView
                     t={t}
                     notify={notify}
+                    language={config.language}
                   />
                 )}
               </Suspense>

@@ -473,6 +473,28 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({ t, profiles, proxies
     );
   };
 
+  // Chạy tất cả profiles hiện có (start nếu đang stopped)
+  const handleTestAllProfiles = () => {
+    if (!profiles || profiles.length === 0) {
+      notify(t.noProfiles, 'error');
+      return;
+    }
+
+    const stoppeds = profiles.filter((p) => p.status !== 'running');
+    if (stoppeds.length === 0) {
+      notify(t.profileAlreadyRunning);
+      return;
+    }
+
+    notify(`Launching ${stoppeds.length} profiles to ${urlToOpen || 'https://www.google.com'}`);
+
+    stoppeds.forEach((p, idx) => {
+      setTimeout(() => {
+        toggleProfileStatus(p.id);
+      }, idx * 400); // giãn cách nhẹ cho an toàn
+    });
+  };
+
   return (
     <div className="max-w-7xl mx-auto">
       <div className="bg-white dark:bg-slate-850 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 mb-6 flex flex-col md:flex-row gap-3">
@@ -487,7 +509,7 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({ t, profiles, proxies
             />
          </div>
          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => { notify(`Launching all profiles to ${urlToOpen}`); }}>
+            <Button variant="secondary" onClick={handleTestAllProfiles}>
                 <Play className="w-4 h-4 mr-2" /> Test All
             </Button>
             <Button onClick={() => setIsProfileModalOpen(true)}>

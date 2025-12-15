@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState } from "react";
-import { Eraser, Send, MessageCircle } from "lucide-react";
+import { Eraser, Send, MessageCircle, Trash2 } from "lucide-react";
 import { Button, Modal } from "../components/UIComponents";
 import { ChatMessage, ChatSession } from "../types";
+import { chatAPI } from "../services/api";
 
 interface AdminChatViewProps {
   t: any;
@@ -22,7 +23,78 @@ export const AdminChatView: React.FC<AdminChatViewProps> = ({
 }) => {
   const [adminMessageInput, setAdminMessageInput] = useState("");
   const [isClearModalOpen, setIsClearModalOpen] = useState(false); // State cho Modal xác nhận xóa
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const adminChatScrollRef = useRef<HTMLDivElement>(null);
+
+  // Load chat sessions từ API khi component mount hoặc khi cần refresh
+  const loadChatSessions = async () => {
+    try {
+      setIsLoading(true);
+      const sessions = await chatAPI.getAllChatSessions();
+      setChatSessions(sessions);
+    } catch (error: any) {
+      console.error("[AdminChatView] Error loading chat sessions:", error);
+      notify(error.message || "Không thể tải chat sessions");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteChatRequest = () => {
+    if (!selectedChatUser) return;
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteChat = async () => {
+    if (!selectedChatUser) return;
+
+    const currentSession = chatSessions.find(
+      (s) => s.userId === selectedChatUser || s.userEmail === selectedChatUser
+    );
+
+    if (!currentSession) {
+      setIsDeleteModalOpen(false);
+      return;
+    }
+
+    // Optimistic remove
+    const previousSessions = [...chatSessions];
+    setChatSessions((prev) =>
+      prev.filter(
+        (s) =>
+          s.userId !== selectedChatUser && s.userEmail !== selectedChatUser
+      )
+    );
+    setSelectedChatUser(null);
+    setIsDeleteModalOpen(false);
+
+    try {
+      await chatAPI.deleteChatSession(selectedChatUser);
+      await loadChatSessions();
+      notify(t.success);
+    } catch (error: any) {
+      console.error("[AdminChatView] Error deleting chat:", error);
+      notify(error.message || "Không thể xóa chat");
+      // Rollback
+      setChatSessions(previousSessions);
+    }
+  };
+
+  // Auto-refresh chat sessions mỗi 3 giây để có real-time updates
+  useEffect(() => {
+    // Load lần đầu
+    loadChatSessions();
+
+    // Setup polling để refresh mỗi 3 giây
+    const intervalId = setInterval(() => {
+      loadChatSessions();
+    }, 3000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []); // Chỉ chạy một lần khi component mount
 
   useEffect(() => {
     if (adminChatScrollRef.current) {
@@ -31,30 +103,83 @@ export const AdminChatView: React.FC<AdminChatViewProps> = ({
     }
   }, [chatSessions, selectedChatUser]);
 
-  const handleSendAdminMessage = (e?: React.FormEvent) => {
+  const handleSendAdminMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!adminMessageInput.trim() || !selectedChatUser) return;
+
+    const messageText = adminMessageInput.trim();
+    setAdminMessageInput(""); // Clear input ngay để UX tốt hơn
 
     const newMessage: ChatMessage = {
       id: Date.now().toString(),
       sender: "admin",
-      text: adminMessageInput,
+      text: messageText,
       timestamp: Date.now(),
     };
 
-    setChatSessions((prev) => {
-      return prev.map((s) => {
-        if (s.userEmail === selectedChatUser) {
-          return {
-            ...s,
-            messages: [...s.messages, newMessage],
-            lastUpdated: Date.now(),
-          };
-        }
-        return s;
-      });
-    });
-    setAdminMessageInput("");
+    // Optimistic update - cập nhật UI ngay
+    const currentSession = chatSessions.find(
+      (s) => s.userId === selectedChatUser || s.userEmail === selectedChatUser
+    );
+
+    if (currentSession) {
+      const updatedSession: ChatSession = {
+        ...currentSession,
+        messages: [...currentSession.messages, newMessage],
+        lastUpdated: Date.now(),
+      };
+
+      // Update local state ngay
+      setChatSessions((prev) =>
+        prev.map((s) =>
+          s.userId === selectedChatUser || s.userEmail === selectedChatUser
+            ? updatedSession
+            : s
+        )
+      );
+
+      // Lưu lên server
+      try {
+        await chatAPI.saveChatSession(updatedSession);
+        // Refresh để lấy dữ liệu mới nhất từ server
+        await loadChatSessions();
+      } catch (error: any) {
+        console.error("[AdminChatView] Error saving message:", error);
+        notify(error.message || "Không thể gửi tin nhắn");
+        // Rollback nếu lỗi
+        setChatSessions((prev) =>
+          prev.map((s) =>
+            s.userId === selectedChatUser || s.userEmail === selectedChatUser
+              ? currentSession
+              : s
+          )
+        );
+        setAdminMessageInput(messageText); // Restore input
+      }
+    } else {
+      // Tạo session mới nếu chưa có
+      const newSession: ChatSession = {
+        userId: selectedChatUser,
+        userEmail: selectedChatUser,
+        messages: [newMessage],
+        lastUpdated: Date.now(),
+      };
+
+      setChatSessions((prev) => [...prev, newSession]);
+
+      try {
+        await chatAPI.saveChatSession(newSession);
+        await loadChatSessions();
+      } catch (error: any) {
+        console.error("[AdminChatView] Error creating session:", error);
+        notify(error.message || "Không thể tạo chat session");
+        // Rollback
+        setChatSessions((prev) =>
+          prev.filter((s) => s.userId !== selectedChatUser && s.userEmail !== selectedChatUser)
+        );
+        setAdminMessageInput(messageText);
+      }
+    }
   };
 
   const handleClearChatRequest = () => {
@@ -62,19 +187,52 @@ export const AdminChatView: React.FC<AdminChatViewProps> = ({
     setIsClearModalOpen(true);
   };
 
-  const confirmClearChat = () => {
+  const confirmClearChat = async () => {
     if (!selectedChatUser) return;
 
-    setChatSessions((prev) =>
-      prev.map((s) => {
-        if (s.userEmail === selectedChatUser) {
-          return { ...s, messages: [] };
-        }
-        return s;
-      })
+    const currentSession = chatSessions.find(
+      (s) => s.userId === selectedChatUser || s.userEmail === selectedChatUser
     );
-    notify(t.success);
+
+    if (!currentSession) {
+      setIsClearModalOpen(false);
+      return;
+    }
+
+    // Optimistic update
+    const clearedSession: ChatSession = {
+      ...currentSession,
+      messages: [],
+      lastUpdated: Date.now(),
+    };
+
+    setChatSessions((prev) =>
+      prev.map((s) =>
+        s.userId === selectedChatUser || s.userEmail === selectedChatUser
+          ? clearedSession
+          : s
+      )
+    );
+
     setIsClearModalOpen(false);
+
+    // Lưu lên server
+    try {
+      await chatAPI.saveChatSession(clearedSession);
+      await loadChatSessions();
+      notify(t.success);
+    } catch (error: any) {
+      console.error("[AdminChatView] Error clearing chat:", error);
+      notify(error.message || "Không thể xóa chat");
+      // Rollback
+      setChatSessions((prev) =>
+        prev.map((s) =>
+          s.userId === selectedChatUser || s.userEmail === selectedChatUser
+            ? currentSession
+            : s
+        )
+      );
+    }
   };
 
   const formatTime = (timestamp: number) => {
@@ -140,10 +298,17 @@ export const AdminChatView: React.FC<AdminChatViewProps> = ({
               </div>
               <Button
                 variant="ghost"
-                className="text-red-500 hover:text-red-700 p-2"
+                className="text-slate-500 hover:text-slate-700 p-2"
                 onClick={handleClearChatRequest}
               >
                 <Eraser className="w-4 h-4 mr-2" /> {t.clearChat}
+              </Button>
+              <Button
+                variant="ghost"
+                className="text-red-500 hover:text-red-700 p-2"
+                onClick={handleDeleteChatRequest}
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> {t.deleteChat}
               </Button>
             </div>
 
@@ -228,6 +393,29 @@ export const AdminChatView: React.FC<AdminChatViewProps> = ({
         <div className="p-6">
           <p className="text-slate-600 dark:text-slate-300">
             {t.clearChatConfirm}
+          </p>
+        </div>
+      </Modal>
+
+      {/* Modal xác nhận xóa hoàn toàn chat */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        title={t.deleteChat}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setIsDeleteModalOpen(false)}>
+              {t.cancel}
+            </Button>
+            <Button variant="danger" onClick={confirmDeleteChat}>
+              {t.delete}
+            </Button>
+          </>
+        }
+      >
+        <div className="p-6">
+          <p className="text-slate-600 dark:text-slate-300">
+            {t.deleteChatConfirm}
           </p>
         </div>
       </Modal>

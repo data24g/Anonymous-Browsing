@@ -860,7 +860,13 @@ export const userAPI = {
       const headers = getAuthHeaders();
       
       console.log('[UserAPI] Getting users from:', apiUrl);
-      console.log('[UserAPI] Headers:', { ...headers, Authorization: headers.Authorization ? 'Present' : 'Missing' });
+      const authHeader =
+        (headers as any)?.Authorization ||
+        (headers as any)?.authorization ||
+        (Array.isArray(headers)
+          ? headers.find(([key]) => key.toLowerCase() === 'authorization')?.[1]
+          : null);
+      console.log('[UserAPI] Headers:', { Authorization: authHeader ? 'Present' : 'Missing' });
       
       const response = await fetch(`${apiUrl}/users`, {
         method: 'GET',

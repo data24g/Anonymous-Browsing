@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { MessageCircle, X, Bot, Send } from 'lucide-react';
 import { ChatSession, ChatMessage, User } from '../types';
+import { chatAPI } from '../services/api';
 
 interface ChatWidgetProps {
   t: any;
@@ -15,6 +16,31 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({ t, currentUser, chatSess
   const [userMessageInput, setUserMessageInput] = useState('');
   const userChatScrollRef = useRef<HTMLDivElement>(null);
 
+  // Load chat session từ server khi mở widget
+  useEffect(() => {
+    if (isOpen && currentUser && !currentUser.isAdmin) {
+      // Load chat session từ server khi user mở chat widget
+      chatAPI.getChatSession(currentUser.email)
+        .then(session => {
+          // Cập nhật chat sessions với dữ liệu mới nhất từ server
+          setChatSessions(prev => {
+            const existingIndex = prev.findIndex(s => s.userEmail === currentUser.email);
+            if (existingIndex >= 0) {
+              const updated = [...prev];
+              updated[existingIndex] = session;
+              return updated;
+            } else {
+              return [...prev, session];
+            }
+          });
+        })
+        .catch(error => {
+          console.error('[ChatWidget] Error loading chat session:', error);
+          // Nếu lỗi, giữ nguyên state hiện tại
+        });
+    }
+  }, [isOpen, currentUser]);
+
   // Auto-scroll to bottom
   useEffect(() => {
     if (isOpen && userChatScrollRef.current) {
@@ -22,34 +48,75 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({ t, currentUser, chatSess
     }
   }, [chatSessions, isOpen]);
 
-  const handleSendUserMessage = (e?: React.FormEvent) => {
+  const handleSendUserMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!userMessageInput.trim() || !currentUser) return;
+
+    const messageText = userMessageInput.trim();
+    setUserMessageInput(''); // Clear input ngay để UX tốt hơn
 
     const newMessage: ChatMessage = {
         id: Date.now().toString(),
         sender: 'user',
-        text: userMessageInput,
+        text: messageText,
         timestamp: Date.now()
     };
 
-    setChatSessions(prev => {
-        const existingSessionIndex = prev.findIndex(s => s.userEmail === currentUser.email);
-        if (existingSessionIndex >= 0) {
-            const updated = [...prev];
-            updated[existingSessionIndex].messages.push(newMessage);
-            updated[existingSessionIndex].lastUpdated = Date.now();
-            return updated;
-        } else {
-            return [...prev, {
-                userId: currentUser.email,
-                userEmail: currentUser.email,
-                messages: [newMessage],
-                lastUpdated: Date.now()
-            }];
+    // Optimistic update - cập nhật UI ngay
+    const currentSession = chatSessions.find(s => s.userEmail === currentUser.email);
+    
+    if (currentSession) {
+        const updatedSession: ChatSession = {
+            ...currentSession,
+            messages: [...currentSession.messages, newMessage],
+            lastUpdated: Date.now()
+        };
+
+        // Update local state ngay
+        setChatSessions(prev => 
+            prev.map(s => 
+                s.userEmail === currentUser.email ? updatedSession : s
+            )
+        );
+
+        // Lưu lên server
+        try {
+            await chatAPI.saveChatSession(updatedSession);
+        } catch (error: any) {
+            console.error('[ChatWidget] Error saving message:', error);
+            // Rollback nếu lỗi
+            setChatSessions(prev => 
+                prev.map(s => 
+                    s.userEmail === currentUser.email ? currentSession : s
+                )
+            );
+            setUserMessageInput(messageText); // Restore input
+            alert('Không thể gửi tin nhắn. Vui lòng thử lại.');
         }
-    });
-    setUserMessageInput('');
+    } else {
+        // Tạo session mới nếu chưa có
+        const newSession: ChatSession = {
+            userId: currentUser.email,
+            userEmail: currentUser.email,
+            messages: [newMessage],
+            lastUpdated: Date.now()
+        };
+
+        setChatSessions(prev => [...prev, newSession]);
+
+        // Lưu lên server
+        try {
+            await chatAPI.saveChatSession(newSession);
+        } catch (error: any) {
+            console.error('[ChatWidget] Error creating session:', error);
+            // Rollback
+            setChatSessions(prev => 
+                prev.filter(s => s.userEmail !== currentUser.email)
+            );
+            setUserMessageInput(messageText);
+            alert('Không thể gửi tin nhắn. Vui lòng thử lại.');
+        }
+    }
   };
 
   const formatTime = (timestamp: number) => {

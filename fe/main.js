@@ -13,10 +13,21 @@ const profilePids = {}; // Lưu trữ PID của child processes theo profileId
 function getScriptPath() {
   if (app.isPackaged) {
     // Production: resources/code_test_nhan/tes.js
-    return path.join(process.resourcesPath, "code_test_nhan", "tes.js");
+    const scriptPath = path.join(
+      process.resourcesPath,
+      "code_test_nhan",
+      "tes.js"
+    );
+    console.log(`[getScriptPath] Packaged mode - Script path: ${scriptPath}`);
+    console.log(`[getScriptPath] Resources path: ${process.resourcesPath}`);
+    return scriptPath;
   } else {
     // Development: code_test_nhan/tes.js (từ root project)
-    return path.join(__dirname, "..", "code_test_nhan", "tes.js");
+    const scriptPath = path.join(__dirname, "..", "code_test_nhan", "tes.js");
+    console.log(
+      `[getScriptPath] Development mode - Script path: ${scriptPath}`
+    );
+    return scriptPath;
   }
 }
 
@@ -54,21 +65,33 @@ function createWindow() {
       devTools: true,
     },
     autoHideMenuBar: true,
-    icon: path.join(__dirname, "icon.png"),
+    icon: app.isPackaged
+      ? path.join(__dirname, "logo.png")
+      : path.join(__dirname, "..", "public", "logo.png"),
   });
 
   // Load app từ Vite server (dev) hoặc file tĩnh (prod)
   const loadURL = () => {
-    const url = "http://localhost:5173";
-    console.log(`[Main Process] Loading URL: ${url}`);
-    mainWindow.loadURL(url).catch((err) => {
-      console.error(`[Main Process] Failed to load URL: ${err.message}`);
-      // Retry after 2 seconds
-      setTimeout(() => {
-        console.log("[Main Process] Retrying to load URL...");
-        loadURL();
-      }, 2000);
-    });
+    if (app.isPackaged) {
+      // Production: Load từ file tĩnh
+      const indexPath = path.join(__dirname, "dist", "index.html");
+      console.log(`[Main Process] Loading from file: ${indexPath}`);
+      mainWindow.loadFile(indexPath).catch((err) => {
+        console.error(`[Main Process] Failed to load file: ${err.message}`);
+      });
+    } else {
+      // Development: Load từ Vite dev server
+      const url = "http://localhost:5173";
+      console.log(`[Main Process] Loading URL: ${url}`);
+      mainWindow.loadURL(url).catch((err) => {
+        console.error(`[Main Process] Failed to load URL: ${err.message}`);
+        // Retry after 2 seconds
+        setTimeout(() => {
+          console.log("[Main Process] Retrying to load URL...");
+          loadURL();
+        }, 2000);
+      });
+    }
   };
 
   loadURL();
@@ -109,16 +132,17 @@ function createWindow() {
     console.log("[Main Process] DOM ready");
   });
 
-  // Mở DevTools để debug (uncomment để xem lỗi)
-  mainWindow.webContents.openDevTools();
+  // DevTools chỉ mở khi development mode (không mở trong production)
+  // Để mở DevTools thủ công: Ctrl+Shift+I hoặc F12
+  // mainWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(() => {
   console.log("[Main Process] Electron app ready");
-  
+
   // Bước 1: Kill tất cả Chrome processes cũ từ session trước
   killAllChromeProcesses();
-  
+
   // Bước 2: Tạo window
   createWindow();
   console.log("[Main Process] Window created");
@@ -140,7 +164,9 @@ app.whenReady().then(() => {
         action: "reset-all",
         status: "stopped",
       });
-      console.log("[Main Process] Sent reset-all signal to frontend - all profiles reset to stopped");
+      console.log(
+        "[Main Process] Sent reset-all signal to frontend - all profiles reset to stopped"
+      );
     }
   }, 1000);
 });
@@ -157,7 +183,9 @@ function killChromeProcessesForProfile(profileId) {
   const userDataDirName = `ruyi_live_${profileId}`;
   const escapedUserDataDir = userDataDir.replace(/\\/g, "\\\\");
 
-  console.log(`[*] Killing Chrome processes for profile ${profileId} only (not affecting other profiles)...`);
+  console.log(
+    `[*] Killing Chrome processes for profile ${profileId} only (not affecting other profiles)...`
+  );
 
   try {
     // Cách 1: Kill Chrome processes với user data dir name trong command line
@@ -298,7 +326,7 @@ function killAllProfiles() {
       delete profileProcesses[key];
     }
   }
-  
+
   // Kill tất cả Chrome processes còn sót lại (orphaned)
   killAllChromeProcesses();
 }
@@ -306,12 +334,12 @@ function killAllProfiles() {
 // Hàm kill tất cả Chrome processes (orphaned) khi app khởi động hoặc tắt
 function killAllChromeProcesses() {
   if (process.platform !== "win32") return;
-  
+
   console.log("[*] Killing all orphaned Chrome processes...");
   try {
     const scriptPath = getScriptPath();
     const codeTestNhanDir = path.dirname(scriptPath);
-    
+
     // Cách 1: Kill tất cả Chrome processes có user data dir ruyi_live
     try {
       execSync(
@@ -321,7 +349,7 @@ function killAllChromeProcesses() {
     } catch (e) {
       // Ignore
     }
-    
+
     // Cách 2: Kill tất cả Chrome processes từ Chrome-bin có user data dir
     try {
       execSync(
@@ -331,7 +359,7 @@ function killAllChromeProcesses() {
     } catch (e) {
       // Ignore
     }
-    
+
     // Cách 3: Kill tất cả Chrome processes có đường dẫn code_test_nhan trong command line
     try {
       const escapedPath = codeTestNhanDir.replace(/\\/g, "\\\\");
@@ -342,7 +370,7 @@ function killAllChromeProcesses() {
     } catch (e) {
       // Ignore
     }
-    
+
     // Cách 4: Kill tất cả Node.js processes đang chạy tes.js (orphaned)
     try {
       execSync(
@@ -352,20 +380,25 @@ function killAllChromeProcesses() {
     } catch (e) {
       // Ignore
     }
-    
+
     console.log("[*] Finished killing orphaned Chrome processes");
   } catch (e) {
-    console.error("[ERROR] Error killing orphaned Chrome processes:", e.message);
+    console.error(
+      "[ERROR] Error killing orphaned Chrome processes:",
+      e.message
+    );
   }
 }
 
 // Kill tất cả khi app sắp quit
 app.on("before-quit", (event) => {
-  console.log("[*] App is quitting, killing all profiles and resetting status...");
+  console.log(
+    "[*] App is quitting, killing all profiles and resetting status..."
+  );
   killAllProfiles();
   // Kill tất cả Chrome processes
   killAllChromeProcesses();
-  
+
   // Gửi signal đến frontend để reset tất cả profiles về stopped
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
     mainWindow.webContents.send("profile-status", {
@@ -374,7 +407,7 @@ app.on("before-quit", (event) => {
     });
     console.log("[Main Process] Sent reset-all signal before quit");
   }
-  
+
   // Đợi một chút để processes được kill và signal được gửi
   setTimeout(() => {
     // Cho phép app quit
@@ -386,7 +419,7 @@ app.on("window-all-closed", () => {
   killAllProfiles();
   // Kill tất cả Chrome processes
   killAllChromeProcesses();
-  
+
   // Gửi signal đến frontend để reset tất cả profiles về stopped
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
     mainWindow.webContents.send("profile-status", {
@@ -437,14 +470,18 @@ ipcMain.on("start-profile", async (event, profileData) => {
 
   // Bước 1: Kill Chrome processes cũ (orphaned) trước khi start
   // CHỈ kill processes của profile này, không ảnh hưởng profile khác đang chạy
-  console.log(`[*] Step 1: Killing any existing Chrome processes for profile ${profileId} only...`);
+  console.log(
+    `[*] Step 1: Killing any existing Chrome processes for profile ${profileId} only...`
+  );
   killChromeProcessesForProfile(profileId);
-  
+
   // Đợi một chút để processes được kill
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // Bước 2: Kiểm tra và cleanup process cũ nếu có
-  console.log(`[*] Step 2: Checking for existing process for profile ${profileId}...`);
+  console.log(
+    `[*] Step 2: Checking for existing process for profile ${profileId}...`
+  );
   if (profileProcesses[profileId]) {
     const proc = profileProcesses[profileId];
     if (!proc.killed) {
@@ -453,13 +490,13 @@ ipcMain.on("start-profile", async (event, profileData) => {
       );
       try {
         proc.kill("SIGTERM");
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         if (!proc.killed) {
           proc.kill("SIGKILL");
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
         killChromeProcessesForProfile(profileId);
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (e) {
         console.error(`[ERROR] Error killing old process:`, e);
       }
@@ -470,22 +507,24 @@ ipcMain.on("start-profile", async (event, profileData) => {
   }
 
   // Bước 3: Xóa user data directory cũ nếu còn tồn tại (tránh conflict)
-  console.log(`[*] Step 3: Cleaning up user data directory for profile ${profileId}...`);
+  console.log(
+    `[*] Step 3: Cleaning up user data directory for profile ${profileId}...`
+  );
   const scriptPath = getScriptPath();
   const userDataDir = path.join(
     path.dirname(scriptPath),
     `ruyi_live_${profileId}`
   );
-  
+
   // Cleanup đồng bộ để đảm bảo không có conflict
   if (fs.existsSync(userDataDir)) {
     try {
       // Kill Chrome processes trước khi xóa directory
       killChromeProcessesForProfile(profileId);
-      
+
       // Đợi một chút để processes được kill
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       // Thử xóa user data dir nhiều lần nếu cần
       let retries = 3;
       while (retries > 0 && fs.existsSync(userDataDir)) {
@@ -496,12 +535,17 @@ ipcMain.on("start-profile", async (event, profileData) => {
         } catch (e) {
           retries--;
           if (retries > 0) {
-            console.log(`[WARN] Không thể xóa user data dir, retrying... (${retries} attempts left)`);
+            console.log(
+              `[WARN] Không thể xóa user data dir, retrying... (${retries} attempts left)`
+            );
             // Kill lại Chrome processes và đợi thêm
             killChromeProcessesForProfile(profileId);
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise((resolve) => setTimeout(resolve, 1000));
           } else {
-            console.error(`[WARN] Không thể xóa user data dir cũ sau nhiều lần thử:`, e);
+            console.error(
+              `[WARN] Không thể xóa user data dir cũ sau nhiều lần thử:`,
+              e
+            );
           }
         }
       }
@@ -509,9 +553,9 @@ ipcMain.on("start-profile", async (event, profileData) => {
       console.error(`[WARN] Error cleaning up old user data dir:`, e);
     }
   }
-  
+
   // Đợi thêm một chút để đảm bảo cleanup hoàn tất
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // Kiểm tra file script và Chrome (đã có scriptPath ở trên)
   const chromePath = getChromeBinPath();
@@ -582,7 +626,9 @@ ipcMain.on("start-profile", async (event, profileData) => {
   // Thêm proxy nếu có
   if (proxyString) {
     args.push("--proxy", proxyString);
-    console.log(`[*] Using proxy: ${proxyString.split('@')[1] || proxyString} (masked)`);
+    console.log(
+      `[*] Using proxy: ${proxyString.split("@")[1] || proxyString} (masked)`
+    );
   } else {
     console.log(`[*] No proxy configured for this profile`);
   }
@@ -687,9 +733,22 @@ ipcMain.on("start-profile", async (event, profileData) => {
       delete profileProcesses[profileId];
       delete profilePids[profileId];
 
-      // Kill Chrome processes liên quan nếu process exit với lỗi
-      if (code !== 0) {
+      // Chỉ kill Chrome processes nếu process exit với lỗi nghiêm trọng
+      // Không kill nếu exit code là 0 (normal exit) hoặc signal là SIGTERM/SIGINT (user stop)
+      if (
+        code !== 0 &&
+        code !== null &&
+        signal !== "SIGTERM" &&
+        signal !== "SIGINT"
+      ) {
+        console.log(
+          `[WARN] Process exit với lỗi (code: ${code}), killing Chrome processes...`
+        );
         killChromeProcessesForProfile(profileId);
+      } else {
+        console.log(
+          `[*] Process exit bình thường (code: ${code}, signal: ${signal}), không kill Chrome processes`
+        );
       }
 
       // Xóa user data directory
@@ -738,9 +797,11 @@ ipcMain.on("stop-profile", (event, profileId) => {
   if (!proc || proc.killed) {
     // Profile không có process đang chạy (có thể đã bị kill khi app tắt)
     // Chỉ cần kill Chrome processes còn sót lại và update status
-    console.log(`[INFO] Profile ${profileId} không có process đang chạy, cleaning up Chrome processes...`);
+    console.log(
+      `[INFO] Profile ${profileId} không có process đang chạy, cleaning up Chrome processes...`
+    );
     killChromeProcessesForProfile(profileId);
-    
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("profile-status", {
         profileId,
